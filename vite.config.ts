@@ -6,6 +6,15 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      ignored: [
+        '**/.aeris/**',
+        '**/release/**',
+        '**/references/**',
+        '**/artifacts/**',
+        '**/build/**'
+      ]
+    },
     proxy: { '/api': 'http://127.0.0.1:4318' }
   },
   build: { chunkSizeWarningLimit: 700 }

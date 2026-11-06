@@ -12,6 +12,7 @@ const program = new Command()
   .name('aeris')
   .description('AERIS · agentes, contexto, métricas y evolución.')
   .version('0.1.0')
+  .enablePositionalOptions()
 const endpoint = (process.env.AERIS_URL || 'http://127.0.0.1:4318').replace(/\/$/, '')
 let token = ''
 try {

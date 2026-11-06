@@ -4,6 +4,9 @@ import { mkdtemp, mkdir, writeFile, readFile, symlink, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { fileURLToPath } from 'node:url'
 
 const root = await mkdtemp(join(tmpdir(), 'aeris-test-'))
 process.env.AERIS_WORKSPACE = root
@@ -160,9 +163,21 @@ test('independent authenticated accounts cannot read each other runs or control 
   assert.equal(logout.ok, true)
   const expired = await fetch(`${base}/messages`, { headers: { Cookie: cookie } })
   assert.equal(expired.status, 401)
-  const other = await call('/auth/register', { email: 'aeris-other@example.invalid', name: 'Other account', password: 'another-long-test-pass' }, false)
+  const other = await call(
+    '/auth/register',
+    {
+      email: 'aeris-other@example.invalid',
+      name: 'Other account',
+      password: 'another-long-test-pass'
+    },
+    false
+  )
   const otherCookie = other.response.headers.get('set-cookie')!.split(';')[0]
-  const forbidden = await fetch(`${base}/settings`, { method: 'PATCH', headers: { Cookie: otherCookie, 'Content-Type': 'application/json' }, body: '{"allowWrites":true}' })
+  const forbidden = await fetch(`${base}/settings`, {
+    method: 'PATCH',
+    headers: { Cookie: otherCookie, 'Content-Type': 'application/json' },
+    body: '{"allowWrites":true}'
+  })
   assert.equal(forbidden.status, 403)
 })
 
@@ -362,4 +377,21 @@ test('unknown usage prevents further API calls and does not fabricate accounting
     globalThis.fetch = originalFetch
     setKey('openai', '')
   }
+})
+
+test('CLI benchmark policy version does not collide with the application version flag', async () => {
+  const execute = promisify(execFile)
+  const cli = fileURLToPath(new URL('../cli/index.ts', import.meta.url))
+  const options = { env: { ...process.env, AERIS_URL: `http://127.0.0.1:${port}` }, timeout: 20000 }
+  const benchmark = await execute(
+    process.execPath,
+    ['--import', 'tsx', cli, 'benchmark', '--version', 'v1', '--split', 'dev'],
+    options
+  )
+  const report = JSON.parse(benchmark.stdout)
+  assert.equal(report.versionId, 'v1')
+  assert.equal(report.split, 'dev')
+  assert.equal(report.count, 20)
+  const version = await execute(process.execPath, ['--import', 'tsx', cli, '--version'], options)
+  assert.equal(version.stdout.trim(), '0.1.0')
 })

@@ -1,27 +1,27 @@
 # Verificación de AERIS v0.1
 
-Fecha: 6 de noviembre de 2026. Código funcional de referencia: `0a04b68149654045b826d68f54913e9bfb44bde4`.
+Fecha: 6 de noviembre de 2026. Código de la aplicación empaquetada de referencia: `0a04b68149654045b826d68f54913e9bfb44bde4`.
 
 ## Comprobaciones ejecutadas
 
-| Comprobación | Resultado observado |
-| --- | --- |
-| TypeScript | Sin errores |
-| Pruebas automáticas | 15 aprobadas, cero fallos, cero omitidas |
-| Build web y servidor | Correcto |
-| CLI compilada | Estado, modelos, misión de demo y recuperación de contexto correctos |
-| Dos procesos CLI | Mensajes atlas → nova y nova → atlas en sala qa-cli |
-| Worktree real | Creación de rama aeris/verification y checkout correctos; limpieza posterior correcta |
-| Dashboard en escritorio | Interfaz, misiones y datos del motor visibles |
-| Diseño móvil | A 390 px, ancho del documento 383 px y ancho del contenido 383 px; sin desbordamiento horizontal de página |
-| Context Brain | Grafo de seis páginas y ocho enlaces, navegación de páginas y recuperación probados |
-| Recuperación de prueba | Tres páginas, 501 tokens estimados dentro de un límite de 1 800 |
-| Evolución de prueba | v1: 5/15 casos; v2: 15/15 casos de validación, cero errores críticos |
-| Aplicación empaquetada | Motor iniciado en 4319, health correcto y ruta /app con HTTP 200 |
-| Portable Windows | Ejecutable lanzado directamente; motor responde ok=true, versión 0.1.0 |
-| Repositorio | Código subido y rama main verificada en origin |
-| Secretos y referencias | Datos locales, credenciales, fuentes locales y paquetes originales excluidos de Git |
-| Reglas de código | Sin comentarios en el código propio y sin emojis en archivos de texto publicados |
+| Comprobación            | Resultado observado                                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| TypeScript              | Sin errores                                                                                                |
+| Pruebas automáticas     | 16 aprobadas, cero fallos, cero omitidas                                                                   |
+| Build web y servidor    | Correcto                                                                                                   |
+| CLI compilada           | Estado, modelos, misión de demo, recuperación de contexto y selección de versión de benchmark correctos    |
+| Dos procesos CLI        | Mensajes atlas → nova y nova → atlas en sala qa-cli                                                        |
+| Worktree real           | Creación de rama aeris/verification y checkout correctos; limpieza posterior correcta                      |
+| Dashboard en escritorio | Interfaz, misiones y datos del motor visibles                                                              |
+| Diseño móvil            | A 390 px, ancho del documento 383 px y ancho del contenido 383 px; sin desbordamiento horizontal de página |
+| Context Brain           | Grafo de seis páginas y ocho enlaces, navegación de páginas y recuperación probados                        |
+| Recuperación de prueba  | Tres páginas, 501 tokens estimados dentro de un límite de 1 800                                            |
+| Evolución de prueba     | v1: 5/15 casos; v2: 15/15 casos de validación, cero errores críticos                                       |
+| Aplicación empaquetada  | Motor iniciado en 4319, health correcto y ruta /app con HTTP 200                                           |
+| Portable Windows        | Ejecutable lanzado directamente; motor responde ok=true, versión 0.1.0                                     |
+| Repositorio             | Código subido y rama main verificada en origin                                                             |
+| Secretos y referencias  | Datos locales, credenciales, fuentes locales y paquetes originales excluidos de Git                        |
+| Reglas de código        | Sin comentarios en el código propio y sin emojis en archivos de texto publicados                           |
 
 ## Binario generado
 
