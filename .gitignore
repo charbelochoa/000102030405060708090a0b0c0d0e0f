@@ -1,0 +1,25 @@
+node_modules/
+dist/
+build/
+release/
+.aeris/
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+coverage/
+artifacts/
+Inspiracion/
+estilo pagina linear/
+claude-code-main/
+css/
+index~83a3c7ea96.css
+tipografia/
+public/fonts/SFPro.woff2
+
+references/design/
+references/cli/
+references/assets/
+references/context/
+references/architecture/
