@@ -102,8 +102,8 @@ function ContextGraph({
       >
         <defs>
           <radialGradient id="brain-light">
-            <stop stopColor="#8daa9720" />
-            <stop offset="1" stopColor="#8daa9700" />
+            <stop stopColor="color-mix(in srgb, var(--tone-150) 12.55%, transparent)" />
+            <stop offset="1" stopColor="color-mix(in srgb, var(--tone-150) 0.00%, transparent)" />
           </radialGradient>
         </defs>
         <ellipse cx="360" cy="190" rx="310" ry="190" fill="url(#brain-light)" />
@@ -120,7 +120,7 @@ function ContextGraph({
               x2={t.x}
               y1={s.y}
               y2={t.y}
-              stroke={active ? '#7e9d87' : '#405648'}
+              stroke={active ? 'var(--tone-150)' : 'var(--tone-80)'}
               strokeWidth={active ? 1.2 : 0.7}
               opacity={active ? 0.8 : 0.45}
             />
@@ -162,19 +162,19 @@ function ContextGraph({
             >
               <circle
                 r={radius + 9}
-                fill={active ? '#a6c3b0' : '#839c8b'}
+                fill={active ? 'var(--tone-176)' : 'var(--tone-150)'}
                 opacity={active ? 0.09 : 0.025}
               />
               <circle
                 r={radius}
-                fill={active ? '#bed9c5' : '#829c89'}
-                stroke={active ? '#d1e5d3' : '#9db2a2'}
+                fill={active ? 'var(--tone-204)' : 'var(--tone-150)'}
+                stroke={active ? 'var(--tone-228)' : 'var(--tone-176)'}
                 strokeWidth={active ? 1.5 : 0.5}
               />
               <text
                 y={radius + 22}
                 textAnchor="middle"
-                fill={active ? '#c7d9c9' : '#8da393'}
+                fill={active ? 'var(--tone-204)' : 'var(--tone-150)'}
                 fontSize="10"
               >
                 {node.title}

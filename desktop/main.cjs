@@ -26,7 +26,7 @@ else {
         height: 940,
         minWidth: 980,
         minHeight: 680,
-        backgroundColor: '#101112',
+        backgroundColor: '#080808',
         title: 'AERIS',
         icon: path.join(__dirname, 'icon.ico'),
         autoHideMenuBar: true,
@@ -38,7 +38,11 @@ else {
       })
       window.webContents.on('will-navigate', (event, url) => {
         const origin = new URL(url).origin
-        const allowed = ['http://127.0.0.1:4319', 'https://accounts.google.com', 'https://github.com']
+        const allowed = [
+          'http://127.0.0.1:4319',
+          'https://accounts.google.com',
+          'https://github.com'
+        ]
         if (!allowed.includes(origin)) {
           event.preventDefault()
           if (url.startsWith('https://')) shell.openExternal(url)

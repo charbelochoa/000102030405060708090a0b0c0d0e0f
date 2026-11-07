@@ -1,10 +1,20 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#101112" />
-    <meta name="description" content="AERIS. Un espacio para agentes que colaboran, aprenden de cada evaluación y hacen más con menos." />
+    <meta name="theme-color" content="#080808" />
+    <script>
+      try {
+        const light = localStorage.getItem('aeris-appearance') === 'light'
+        document.documentElement.dataset.theme = light ? 'light' : 'dark'
+        document.querySelector('meta[name="theme-color"]').content = light ? '#f5f5f5' : '#080808'
+      } catch {}
+    </script>
+    <meta
+      name="description"
+      content="AERIS. Un espacio para agentes que colaboran, aprenden de cada evaluación y hacen más con menos."
+    />
     <link rel="icon" type="image/svg+xml" href="/aeris.svg" />
     <title>AERIS — Intelligence, in progress.</title>
   </head>

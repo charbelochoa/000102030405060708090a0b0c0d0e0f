@@ -13,7 +13,7 @@ export function AerisMark({ small = false }: { small?: boolean }) {
       aria-hidden="true"
     >
       <path d="M20 5 3 35h9l8-14 8 14h9L20 5Z" fill="currentColor" />
-      <path d="m20 27-4.5 8h9L20 27Z" fill="#95b9a1" />
+      <path d="m20 27-4.5 8h9L20 27Z" fill="currentColor" opacity=".45" />
     </svg>
   )
 }
@@ -29,7 +29,6 @@ export function ProviderMark({
   return (
     <span
       className={`provider-mark ${compact ? 'compact' : ''}`}
-      style={{ color: p.color }}
       title={p.name}
       aria-label={p.name}
     >

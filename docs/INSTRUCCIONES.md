@@ -9,6 +9,14 @@
 
 El acceso local crea una sesión del propietario de la computadora. Se puede explorar sin conectar proveedores. Usa el formulario de la página de login para probar el registro y las sesiones por correo.
 
+## Apariencia y actividad de los agentes
+
+El espacio abre en negro. El botón de sol o luna cambia entre negro y blanco y recuerda la elección en cada navegador o instalación de escritorio. La aplicación carga la copia local de SF Pro desde `public/fonts/SFPro.woff2`. En un clon sin esa fuente utiliza la tipografía del sistema.
+
+La isla de la barra superior muestra las misiones en curso. Al abrirla se ven las iteraciones, los tokens, el coste y el acceso al inspector de la misión. En reposo permite consultar la última misión. Pulsa Escape para cerrarla.
+
+Abre **Estudio de agentes** y selecciona un personaje para consultar su función. Las estaciones reaccionan a los eventos del motor y los mensajes recientes de las salas identifican al remitente y al destinatario. **Previsualizar** reproduce una conversación de ejemplo sin ejecutar modelos. **Pausar** detiene la animación visual. La preferencia de movimiento reducido del sistema también se respeta.
+
 ## Ejecutar modelos reales
 
 1. Ir a Proveedores y APIs.

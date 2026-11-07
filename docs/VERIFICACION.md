@@ -1,8 +1,18 @@
 # Verificación de AERIS v0.1
 
-Fecha: 6 de noviembre de 2026. Código de la aplicación empaquetada de referencia: `0a04b68149654045b826d68f54913e9bfb44bde4`.
+El 6 de noviembre de 2026 se verificaron la versión inicial y el rediseño de la interfaz. El registro de la versión inicial corresponde al commit `0a04b68149654045b826d68f54913e9bfb44bde4`.
 
-## Comprobaciones ejecutadas
+## Interfaz monocromática
+
+Se probaron la web compilada a 1480 × 940 y la disposición móvil a 390 × 844. Se comprobó el cambio de tema, su persistencia después de recargar, la apertura de la isla y su cierre con Escape, el acceso al inspector, la selección de estaciones y la pausa de la previsualización. En la vista móvil del estudio y del panel, el ancho del contenido coincidió con los 383 px disponibles después de la barra de desplazamiento.
+
+En un espacio temporal, una misión de demostración generó eventos y mensajes entre constructor y revisor. La isla mostró tres de ocho iteraciones y el coste simulado. El estudio mostró los dos sentidos de la conversación con el remitente, el destinatario y la etiqueta de demostración.
+
+Pasaron `npm run check` con 16 pruebas y `npm run build`. Se compararon los seis recursos de la distribución web con sus copias empaquetadas en Electron, incluidos el JavaScript, el CSS y SF Pro. Los seis coincidieron byte por byte.
+
+Se abrió `release/AERIS-0.1.0-Windows.exe` con un perfil de prueba. El motor respondió en `127.0.0.1:4319` y sirvió la página, la hoja de estilos, el JavaScript y la fuente con el mismo contenido que la compilación verificada. El portable actualizado pesa 114 811 548 bytes y su SHA-256 es `2AFDA8DE6A990D4E83CA2121217F69F87992C3AB8392AD2F0828E018A4CC072A`.
+
+## Comprobaciones de la versión inicial
 
 | Comprobación            | Resultado observado                                                                                        |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -23,7 +33,7 @@ Fecha: 6 de noviembre de 2026. Código de la aplicación empaquetada de referenc
 | Secretos y referencias  | Datos locales, credenciales, fuentes locales y paquetes originales excluidos de Git                        |
 | Reglas de código        | Sin comentarios en el código propio y sin emojis en archivos de texto publicados                           |
 
-## Binario generado
+## Binario de la versión inicial
 
 Archivo: `release/AERIS-0.1.0-Windows.exe`.
 

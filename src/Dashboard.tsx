@@ -22,7 +22,7 @@ import type { Run } from '../shared/types'
 import { formatTokens, shortTime, useWorkspace } from './lib'
 import { Empty, ProviderMark, SectionTitle, Status, TextLink } from './components'
 import { ImprovementChart, Sparkline, TokenChart } from './Charts'
-import { MiniFactory } from './Factory'
+import { StudioPreview } from './Factory'
 
 export function Dashboard({
   onNew,
@@ -91,12 +91,11 @@ export function Dashboard({
   return (
     <>
       <SectionTitle
-        eyebrow={metrics ? 'CADA TOKEN CUENTA' : 'TU ESPACIO DE INTELIGENCIA'}
-        title={metrics ? 'Todo el progreso. A la vista.' : 'El trabajo evoluciona.'}
+        title={metrics ? 'Métricas y progreso' : 'Vista general'}
         subtitle={
           metrics
             ? 'Calidad, consumo y decisiones de parada en un mismo lugar.'
-            : 'Agentes que colaboran. Resultados que mejoran. Recursos que importan.'
+            : 'Misiones, calidad y consumo de tu equipo.'
         }
       >
         <button className="button" onClick={() => navigate('terminal')}>
@@ -109,6 +108,7 @@ export function Dashboard({
           Nueva misión
         </button>
       </SectionTitle>
+      {!metrics && <StudioPreview onOpen={() => navigate('factory')} />}
       <div className="overview-toolbar">
         <div className="tabs">
           <button className={!metrics ? 'active' : ''} onClick={() => navigate('overview')}>
@@ -117,9 +117,7 @@ export function Dashboard({
           <button className={metrics ? 'active' : ''} onClick={() => navigate('metrics')}>
             Rendimiento
           </button>
-          <button onClick={() => navigate('factory')}>
-            Vista de fábrica<span className="tiny-label">BETA</span>
-          </button>
+          <button onClick={() => navigate('factory')}>Estudio de agentes</button>
         </div>
         <div className="overview-filters">
           <span className={`live-indicator ${connected ? 'online' : ''}`}>
@@ -169,7 +167,7 @@ export function Dashboard({
                       .map((r) => Number(r.status === 'running'))
                   : [0, 0]
               }
-              color="#a9a0bb"
+              color="var(--tone-176)"
             />
           </div>
         </div>
@@ -203,7 +201,7 @@ export function Dashboard({
             {scope === 'demo' ? 'Consumo de ejemplo.' : 'Uso reportado por las APIs.'}
             <Sparkline
               values={runs.length ? runs.map((r) => r.usage.input).reverse() : [0, 0]}
-              color="#b7ae8c"
+              color="var(--tone-176)"
             />
           </div>
         </div>
@@ -224,7 +222,7 @@ export function Dashboard({
               : 'Se actualiza después de cada respuesta.'}
             <Sparkline
               values={runs.length ? runs.map((r) => usd(r.costNano)).reverse() : [0, 0]}
-              color="#ba957e"
+              color="var(--tone-150)"
             />
           </div>
         </div>
@@ -263,11 +261,11 @@ export function Dashboard({
               <TokenChart runs={runs} />
               <div className="legend">
                 <span>
-                  <i className="green" />
+                  <i className="series-main" />
                   Entrada
                 </span>
                 <span>
-                  <i className="purple" />
+                  <i className="series-base" />
                   Salida
                 </span>
               </div>
@@ -465,18 +463,6 @@ export function Dashboard({
             </div>
           )}
         </section>
-        <button className="factory-preview panel" onClick={() => navigate('factory')}>
-          <div>
-            <span className="eyebrow">INTELIGENCIA EN MOVIMIENTO</span>
-            <h2>Un equipo. Un mismo lugar.</h2>
-            <p>Entra a la fábrica y ve a tus agentes colaborar.</p>
-            <span className="text-link">
-              Explorar la fábrica
-              <ArrowUpRight size={14} />
-            </span>
-          </div>
-          <MiniFactory />
-        </button>
       </div>
       <footer className="workspace-footer">
         <span>

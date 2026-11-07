@@ -40,6 +40,8 @@ import { Configuration, Models, Skills } from './Configuration'
 import { Agents, Files, TerminalView } from './WorkspaceViews'
 import { Evolution } from './Evolution'
 import { ContextBrain } from './ContextBrain'
+import { AppearanceSwitch } from './Appearance'
+import { DynamicIsland } from './DynamicIsland'
 import { money } from '../shared/catalog'
 import type { Run } from '../shared/types'
 
@@ -50,7 +52,7 @@ const navigation = [
   { id: 'agents', label: 'Agentes', icon: Users },
   { id: 'metrics', label: 'Métricas y progreso', icon: Activity },
   { id: 'evolution', label: 'Evolución del sistema', icon: GitBranch },
-  { id: 'factory', label: 'La fábrica', icon: FactoryIcon },
+  { id: 'factory', label: 'Estudio de agentes', icon: FactoryIcon },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'files', label: 'Archivos', icon: FileCode2 },
   { id: 'skills', label: 'Skills', icon: Sparkles },
@@ -93,6 +95,7 @@ export function App() {
     setView(next)
     setMobileNav(false)
     history.replaceState({}, '', `/app#${next}`)
+    window.scrollTo(0, 0)
   }
   useEffect(() => {
     if (page !== 'app' || !snapshot || snapshot.user || starting.current) return
@@ -185,8 +188,8 @@ export function App() {
             >
               <span className="workspace-avatar">a</span>
               <span>
-                <strong>Mi espacio de trabajo</strong>
-                <small>Personal workspace</small>
+                <strong>Mi espacio</strong>
+                <small>Espacio personal</small>
               </span>
               <ChevronsUpDown size={12} />
             </button>
@@ -297,7 +300,7 @@ export function App() {
           )}
           <main className="main-shell">
             <header className="app-topbar">
-              <div>
+              <div className="topbar-breadcrumb">
                 <button
                   className="icon-button mobile-menu"
                   aria-label="Abrir navegación"
@@ -312,7 +315,13 @@ export function App() {
                 <ChevronRight size={12} />
                 <strong>{navigation.find((n) => n.id === view)?.label || 'Vista general'}</strong>
               </div>
-              <div>
+              <DynamicIsland
+                onSelect={setSelected}
+                onNew={() => setNewMission(true)}
+                onActivity={() => setNotifications(true)}
+              />
+              <div className="topbar-actions">
+                <AppearanceSwitch />
                 <span className="topbar-local">
                   <i className="subtle-dot positive-dot" />
                   Local workspace
@@ -338,10 +347,11 @@ export function App() {
               </div>
             </header>
             <div className="app-content">
-              {snapshot.runs.some((r) => r.mode === 'demo') && (
+              {view === 'metrics' && snapshot.runs.some((r) => r.mode === 'demo') && (
                 <div className="demo-banner">
                   <span>
-                    <span className="demo-badge">DEMO</span>Un vistazo a lo que puedes construir.
+                    <span className="demo-badge">DEMO</span>Este espacio incluye métricas de
+                    ejemplo.
                     <span className="demo-banner-detail">
                       Las métricas de ejemplo están identificadas y no generan cargos.
                     </span>
@@ -491,6 +501,7 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
           </a>
         </nav>
         <div>
+          <AppearanceSwitch />
           <button className="link-button" onClick={onLogin}>
             Iniciar sesión
           </button>
@@ -581,12 +592,12 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
               <svg viewBox="0 0 680 180" aria-label="Ilustración del progreso de evaluación">
                 <defs>
                   <linearGradient id="hero-area" x1="0" x2="0" y1="0" y2="1">
-                    <stop stopColor="#99bd9d" stopOpacity=".18" />
-                    <stop offset="1" stopColor="#99bd9d" stopOpacity="0" />
+                    <stop stopColor="var(--tone-176)" stopOpacity=".18" />
+                    <stop offset="1" stopColor="var(--tone-176)" stopOpacity="0" />
                   </linearGradient>
                 </defs>
                 {[35, 85, 135].map((y) => (
-                  <path key={y} d={`M0 ${y}H680`} stroke="#2b302b" strokeDasharray="3 5" />
+                  <path key={y} d={`M0 ${y}H680`} stroke="var(--tone-48)" strokeDasharray="3 5" />
                 ))}
                 <path
                   d="M0 157C75 153 60 130 120 126S190 126 220 92 280 84 325 70 390 78 435 48 525 53 555 23 630 26 680 8V180H0Z"
@@ -594,11 +605,11 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
                 />
                 <path
                   d="M0 157C75 153 60 130 120 126S190 126 220 92 280 84 325 70 390 78 435 48 525 53 555 23 630 26 680 8"
-                  stroke="#a6c9ae"
+                  stroke="var(--tone-204)"
                   strokeWidth="2"
                   fill="none"
                 />
-                <circle cx="680" cy="8" r="4" fill="#b2d2b7" />
+                <circle cx="680" cy="8" r="4" fill="var(--tone-204)" />
               </svg>
               <div className="hero-demo-footer">
                 <span>
@@ -706,6 +717,9 @@ function Login({
         <AerisMark />
         <span>AERIS</span>
       </button>
+      <div className="login-appearance">
+        <AppearanceSwitch />
+      </div>
       <div className="login-aside">
         <span className="eyebrow">INTELLIGENCE, IN PROGRESS.</span>
         <h1>

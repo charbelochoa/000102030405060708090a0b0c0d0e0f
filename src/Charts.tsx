@@ -56,8 +56,8 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
       >
         <defs>
           <linearGradient id={`fill-${id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#9dc5aa" stopOpacity="0.17" />
-            <stop offset="100%" stopColor="#9dc5aa" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--tone-176)" stopOpacity="0.17" />
+            <stop offset="100%" stopColor="var(--tone-176)" stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0, 25, 50, 75, 100].map((tick) => (
@@ -78,12 +78,12 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
             <path
               d={path(points.map((p) => ({ ...p, value: points[0].value })))!}
               fill="none"
-              stroke="#777090"
+              stroke="var(--chart-base)"
               strokeWidth="1.5"
               strokeDasharray="4 5"
               opacity="0.75"
             />
-            <path d={path(points)!} fill="none" stroke="#a6cbb2" strokeWidth="2.5" />
+            <path d={path(points)!} fill="none" stroke="var(--chart-main)" strokeWidth="2.5" />
             <line
               x1={x(active.index)}
               x2={x(active.index)}
@@ -91,13 +91,19 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
               y2={height - 35}
               className="chart-hover"
             />
-            <circle cx={x(active.index)} cy={y(active.value)} r="8" fill="#a6cbb2" opacity="0.12" />
+            <circle
+              cx={x(active.index)}
+              cy={y(active.value)}
+              r="8"
+              fill="var(--chart-main)"
+              opacity="0.12"
+            />
             <circle
               cx={x(active.index)}
               cy={y(active.value)}
               r="3.5"
-              fill="#b9ddc4"
-              stroke="#141716"
+              fill="var(--chart-main)"
+              stroke="var(--tone-24)"
               strokeWidth="2"
             />
           </>
@@ -117,11 +123,11 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
       <div className="chart-bottom">
         <div className="legend">
           <span>
-            <i className="green" />
+            <i className="series-main" />
             Calidad evaluada
           </span>
           <span>
-            <i className="purple" />
+            <i className="series-base" />
             Primera versión
           </span>
         </div>
@@ -131,7 +137,13 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
   )
 }
 
-export function Sparkline({ values, color = '#a6cbb2' }: { values: number[]; color?: string }) {
+export function Sparkline({
+  values,
+  color = 'var(--tone-204)'
+}: {
+  values: number[]
+  color?: string
+}) {
   const x = scaleLinear()
     .domain([0, Math.max(1, values.length - 1)])
     .range([1, 105])
