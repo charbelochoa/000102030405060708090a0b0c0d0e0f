@@ -38,3 +38,9 @@ AERIS adapta estos patrones a sus propios contratos y componentes React. Los bun
 Las referencias de skills están fijadas a sus revisiones del 6 de noviembre de 2026. Los perfiles usados en prompts son adaptaciones compactas; los originales se conservan como referencia y no se interpretan como instrucciones del desarrollador del proyecto.
 
 La tipografía SF Pro local se excluye del repositorio y del Docker público. La interfaz dispone de alternativa con fuentes del sistema. Las capturas de páginas y paquetes originales no se distribuyen como código activo.
+
+## Orquestación y memoria
+
+Las revisiones de los diez marcos solicitados están fijadas en [el manifiesto](frameworks.json). El artículo y cuaderno locales de Anthropic motivaron la separación entre fuente, análisis y consolidación. AERIS verifica los procedimientos contra resultados externos en desarrollo y valida la política antes de publicarla. El código del producto enlaza las referencias mediante contratos propios de TypeScript. [Anthropic](https://www.anthropic.com/research/components-of-agent-memory) · [AFlow](https://github.com/FoundationAgents/AFlow) · [OpenCode](https://github.com/anomalyco/opencode)
+
+El catálogo automotriz consultado es de identificación de vehículos para el mercado de Estados Unidos. La prueba valida un conteo sobre el resultado oficial de la consulta de fabricante y año. Los datos no describen inventario comercial, precios ni disponibilidad. [NHTSA vPIC](https://vpic.nhtsa.dot.gov/api/)

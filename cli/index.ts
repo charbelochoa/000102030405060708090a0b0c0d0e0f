@@ -3,15 +3,17 @@ import { Command } from 'commander'
 import chalk from 'chalk'
 import { createInterface } from 'node:readline'
 import { readFile, writeFile } from 'node:fs/promises'
-import { resolve, join } from 'node:path'
+import { resolve, join, dirname } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Run, Snapshot } from '../shared/types'
+import { chartSvg } from '../shared/chart'
+import { fileTypes } from '../shared/file-types'
 import { money, providers, stopLabels } from '../shared/catalog'
 
 const program = new Command()
   .name('aeris')
   .description('AERIS · agentes, contexto, métricas y evolución.')
-  .version('0.1.0')
+  .version('1.0.0')
   .enablePositionalOptions()
 const endpoint = (process.env.AERIS_URL || 'http://127.0.0.1:4318').replace(/\/$/, '')
 let token = ''
@@ -43,7 +45,7 @@ async function request<T = any>(
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(150000)
     })
   } catch {
     throw new Error(
@@ -77,7 +79,7 @@ async function follow(id: string, quiet = false): Promise<Run> {
       if (process.stdout.isTTY) process.stdout.write('\r\x1b[2K')
       print(
         chalk.gray(
-          `  ${run.status} · ${run.iterations.length} iteraciones · ${run.usage.input + run.usage.output} tokens · ${money(run.costNano)} ${run.mode === 'demo' ? 'simulados' : 'USD'}`
+          `  ${run.status} · ${run.iterations.length} iteraciones · ${run.usage.input + run.usage.output} tokens · ${money(run.costNano)} USD`
         )
       )
       last = marker
@@ -85,7 +87,7 @@ async function follow(id: string, quiet = false): Promise<Run> {
     if (!['running', 'queued'].includes(run.status)) {
       if (!quiet) {
         print(chalk.green(`\n${stopLabels[run.stopReason || ''] || run.status}`))
-        if (run.result) print(`\n${run.result}`)
+        if (run.result || run.error) print(run.result || run.error)
       }
       return run
     }
@@ -103,18 +105,7 @@ async function attach(paths: string[]) {
     const buffer = await readFile(resolve(path))
     if (buffer.length > 5_000_000) throw new Error('Límite por archivo: 5 MB.')
     const ext = path.split('.').at(-1)?.toLowerCase() || ''
-    const type = (
-      {
-        png: 'image/png',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        webp: 'image/webp',
-        md: 'text/markdown',
-        txt: 'text/plain',
-        json: 'application/json',
-        csv: 'text/csv'
-      } as Record<string, string>
-    )[ext]
+    const type = fileTypes[ext as keyof typeof fileTypes]
     if (!type) throw new Error(`Formato no admitido: ${path}`)
     result.push({ name: path.replace(/.*[\\/]/, ''), type, data: buffer.toString('base64') })
   }
@@ -163,7 +154,7 @@ program
       model: options.model,
       reviewer: options.reviewer,
       session: options.room,
-      mode: options.live ? 'live' : 'demo',
+      mode: 'live',
       ...(options.budget !== undefined ? { budget: options.budget } : {}),
       ...(options.iterations !== undefined ? { maxIterations: options.iterations } : {}),
       attachments: await attach(options.attach || [])
@@ -284,18 +275,102 @@ program
     }
   })
 program
-  .command('benchmark')
-  .option('--version <id>', 'Versión; por defecto estable')
-  .option('--split <split>', 'dev, validation o test', 'validation')
-  .action(async (options) => {
-    const state = await request('/evolution')
-    print(
-      await request('/benchmarks', {
-        version: options.version || state.stable,
-        split: options.split
-      })
-    )
+  .command('profile')
+  .argument('<file>')
+  .option('--sheet <sheet>')
+  .action(async (file, options) =>
+    print(await request('/lab/inspect', { file: (await attach([file]))[0], sheet: options.sheet }))
+  )
+program
+  .command('document-search')
+  .argument('<file>')
+  .argument('<query>')
+  .action(async (file, query) =>
+    print(await request('/lab/search', { file: (await attach([file]))[0], query }))
+  )
+program
+  .command('analyze')
+  .argument('<file>')
+  .requiredOption('--plan <json>')
+  .option('--sheet <sheet>')
+  .option('--chart <html>')
+  .action(async (file, options) => {
+    const a = await request('/lab/analyze', {
+      file: (await attach([file]))[0],
+      plan: JSON.parse(await readFile(options.plan, 'utf8')),
+      sheet: options.sheet
+    })
+    if (options.chart) {
+      const pages = Array.from({ length: Math.max(1, Math.ceil(a.points.length / 32)) }, (_, i) =>
+        chartSvg(a, 'bar', i * 32)
+      )
+      await writeFile(
+        resolve(options.chart),
+        '<!doctype html><html lang="es"><meta charset="utf-8"><title>AERIS</title>' +
+          pages.join('') +
+          '</html>',
+        'utf8'
+      )
+    }
+    print(a)
   })
+program
+  .command('vehicles')
+  .argument('<make>')
+  .argument('<year>')
+  .action(async (make, year) =>
+    print(
+      await request(
+        '/lab/vehicles?make=' + encodeURIComponent(make) + '&year=' + encodeURIComponent(year)
+      )
+    )
+  )
+program
+  .command('case-import')
+  .argument('<manifest>')
+  .action(async (manifest) => {
+    const spec = JSON.parse(await readFile(resolve(manifest), 'utf8'))
+    if (typeof spec.file === 'string')
+      spec.file = (await attach([resolve(dirname(resolve(manifest)), spec.file)]))[0]
+    print(await request('/evolution/cases', spec))
+  })
+program
+  .command('benchmark')
+  .option('--version <id>', 'Versión, por defecto estable')
+  .option('--split <split>', 'dev, validation o test', 'validation')
+  .option('--task <id>')
+  .option('--strategy <strategy>', 'fixed, static o adaptive', 'adaptive')
+  .option('--budget <usd>', 'USD por caso', Number, 0.1)
+  .action(async (options) => {
+    const s = await request('/evolution')
+    if (!['dev', 'validation', 'test'].includes(options.split))
+      throw new Error('Partición desconocida.')
+    const cases = s.cases.filter(
+      (c: any) => c.split === options.split && (!options.task || c.id === options.task)
+    )
+    const trials = []
+    for (const c of cases) {
+      const t = await request('/benchmarks', {
+        taskId: c.id,
+        strategy: options.strategy,
+        version: options.version || s.active,
+        budget: options.budget
+      })
+      trials.push(t)
+      if (t.error) break
+    }
+    print({
+      versionId: options.version || s.active,
+      split: options.split,
+      count: trials.length,
+      trials
+    })
+    if (trials.some((t) => t.error)) process.exitCode = 1
+  })
+program
+  .command('promote')
+  .description('Aplicar la decisión de validación')
+  .action(async () => print(await request('/evolution/decide', {})))
 program
   .command('optimize')
   .description('Proponer y validar una política candidata')
@@ -353,7 +428,7 @@ program
     print(chalk.green(banner))
     print(
       chalk.gray(
-        `\nIntelligence, in progress. v0.1.0\n${options.name} · sala ${options.room} · ${options.live ? 'API real' : 'demostración'}\n`
+        `\nIntelligence, in progress. v1.0.0\n${options.name} · sala ${options.room} · API\n`
       )
     )
     print(chalk.gray('/help para comandos. /exit para salir.'))
@@ -393,13 +468,8 @@ program
         }
         if (text === '/help') {
           print(
-            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /model ID · /demo · /live\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
+            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
           )
-          return
-        }
-        if (text === '/demo' || text === '/live') {
-          options.live = text === '/live'
-          print(`Modo: ${options.live ? 'API real' : 'demostración'}`)
           return
         }
         if (text.startsWith('/model ')) {
@@ -462,7 +532,7 @@ program
           prompt: text,
           model: options.model,
           session: options.room,
-          mode: options.live ? 'live' : 'demo'
+          mode: 'live'
         })
         print(chalk.gray(`Misión ${current.id}. /message sigue disponible mientras trabaja.`))
         void follow(current.id)

@@ -91,11 +91,7 @@ export function requireUser(req: Request, res: Response, next: NextFunction) {
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (
-    !req.aerisUser ||
-    (req.aerisUser.id !== 'local' &&
-      req.aerisUser.id !== data.users.find((u) => u.provider !== 'demo')?.id)
-  ) {
+  if (!req.aerisUser || (req.aerisUser.id !== 'local' && req.aerisUser.id !== data.users[0]?.id)) {
     res.status(403).json({ error: 'Esta acción requiere la cuenta administradora del espacio.' })
     return
   }

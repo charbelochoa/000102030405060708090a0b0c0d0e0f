@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { bus, data, event, message, publicSettings, save, setKey, workspace } from './store'
-import { createRun, seedDemo, stopRun } from './engine'
+import { createRun, stopRun } from './engine'
 import {
   authenticate,
   identity,
@@ -23,11 +23,12 @@ import {
   safeUser
 } from './auth'
 import { listFiles, readWorkspaceFile, searchFiles, worktree, writeWorkspaceFile } from './tools'
-import { providers } from '../shared/catalog'
-import { evolution, optimize, rollback, runBenchmark } from './evolution'
-import { backlinks, listPages, retrieveContext, savePage, seedContext } from './brain'
+import { defaults, providers } from '../shared/catalog'
+import { registerLab } from './lab-api'
+import { fileSchema } from '../shared/analysis'
+import { backlinks, listPages, retrieveContext, savePage } from './brain'
 
-const providerId = z.enum(['openai', 'anthropic', 'google', 'xai', 'deepseek'])
+const providerId = z.enum(['openai', 'anthropic', 'google', 'xai', 'deepseek', 'nvidia', 'local'])
 const number = (min: number, max: number) => z.number().finite().min(min).max(max)
 const modelSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9._:/-]{1,100}$/),
@@ -47,7 +48,7 @@ const newRunSchema = z.object({
   title: z.string().trim().min(1).max(150).optional(),
   model: z.string().max(100).optional(),
   reviewer: z.string().max(100).optional(),
-  mode: z.enum(['demo', 'live']).default('demo'),
+  mode: z.literal('live').default('live'),
   budget: number(0.001, 100).optional(),
   maxIterations: number(1, 20).int().optional(),
   target: number(1, 100).optional(),
@@ -55,27 +56,7 @@ const newRunSchema = z.object({
     .string()
     .regex(/^[a-zA-Z0-9_-]{1,60}$/)
     .optional(),
-  attachments: z
-    .array(
-      z.object({
-        name: z.string().max(200),
-        type: z.enum([
-          'image/png',
-          'image/jpeg',
-          'image/webp',
-          'text/plain',
-          'text/markdown',
-          'application/json',
-          'text/csv'
-        ]),
-        data: z
-          .string()
-          .max(7_000_000)
-          .regex(/^[A-Za-z0-9+/]*={0,2}$/)
-      })
-    )
-    .max(5)
-    .optional()
+  attachments: z.array(fileSchema).max(5).optional()
 })
 const limited = new Map<string, { count: number; reset: number }>()
 const owner = (req: Request) => req.aerisUser?.id || 'preview'
@@ -114,12 +95,11 @@ export function createApp() {
     }
     next()
   })
-  app.use(express.json({ limit: '30mb' }))
+  app.use(express.json({ limit: '34mb' }))
   app.use(identity)
-  app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'AERIS', version: '0.1.0' }))
+  app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'AERIS', version: '1.0.0' }))
   app.get('/api/snapshot', (req, res) => {
     const id = owner(req)
-    if (id === 'preview') seedDemo(id)
     res.json({
       user: req.aerisUser || null,
       runs: data.runs
@@ -128,8 +108,8 @@ export function createApp() {
       events: data.events.filter((e) => e.owner === id).slice(-150),
       messages: data.messages.filter((m) => m.owner === id).slice(-100),
       ledger: (data.usageLedger || []).filter((l) => l.owner === id),
-      settings: publicSettings(),
-      skills: data.skills,
+      settings: req.aerisUser ? publicSettings() : defaults,
+      skills: req.aerisUser ? data.skills : [],
       workspace: req.aerisUser ? workspace : 'AERIS Workspace',
       auth: {
         google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
@@ -147,15 +127,7 @@ export function createApp() {
       return
     }
     login(res, localUser)
-    seedDemo('local')
     res.json({ user: localUser })
-  })
-  app.post('/api/auth/demo', (_req, res) => {
-    const user = { id: `demo-${randomUUID()}`, name: 'Visitante', email: '', provider: 'demo' }
-    data.users.push(user)
-    login(res, user)
-    seedDemo(user.id)
-    res.json({ user })
   })
   app.use('/api/auth', (req, res, next) => {
     if (req.method !== 'POST') {
@@ -235,10 +207,6 @@ export function createApp() {
     requireUser,
     asyncRoute((req, res) => {
       const input = newRunSchema.parse(req.body)
-      if (input.mode === 'live' && req.aerisUser?.provider === 'demo') {
-        res.status(403).json({ error: 'Crea una cuenta para ejecutar modelos.' })
-        return
-      }
       res.status(201).json(createRun(owner(req), input))
     })
   )
@@ -310,19 +278,21 @@ export function createApp() {
                 hasKey: z.boolean().optional()
               })
             )
-            .length(5)
+            .length(providers.length)
             .optional()
         })
         .strict()
       const input = schema.parse(req.body)
       if (
         input.providers &&
-        (new Set(input.providers.map((p) => p.id)).size !== 5 ||
-          input.providers.some((p) => p.freeTier && p.id !== 'google'))
+        (new Set(input.providers.map((p) => p.id)).size !== providers.length ||
+          input.providers.some((p) => p.freeTier && !['google', 'nvidia'].includes(p.id)))
       )
         throw new Error(
-          'La cuota gratuita solo puede declararse para Gemini y los proveedores deben ser únicos.'
+          'La cuota gratuita solo puede declararse para Gemini o NVIDIA y los proveedores deben ser únicos.'
         )
+      if (input.models && new Set(input.models.map((m) => m.id)).size !== input.models.length)
+        throw new Error('Usa identificadores de modelo únicos.')
       Object.assign(data.settings, input)
       event(owner(req), 'settings', 'Configuración actualizada.')
       res.json(publicSettings())
@@ -443,9 +413,8 @@ export function createApp() {
       res.status(201).json(await worktree(z.object({ name: z.string() }).parse(req.body).name))
     )
   )
-  app.get('/api/evolution', requireUser, (_req, res) => res.json(evolution()))
+  registerLab(app)
   app.get('/api/context', requireUser, (req, res) => {
-    seedContext(owner(req))
     res.json({ pages: listPages(owner(req)) })
   })
   app.post(
@@ -484,26 +453,6 @@ export function createApp() {
       res.json(retrieveContext(owner(req), input.query, input.maxTokens))
     })
   )
-  app.post(
-    '/api/optimizations',
-    requireAdmin,
-    asyncRoute((req, res) => res.status(201).json(optimize(owner(req))))
-  )
-  app.post(
-    '/api/benchmarks',
-    requireAdmin,
-    asyncRoute((req, res) => {
-      const input = z
-        .object({ version: z.string().max(20), split: z.enum(['dev', 'validation', 'test']) })
-        .parse(req.body)
-      res.status(201).json(runBenchmark(owner(req), input.version, input.split))
-    })
-  )
-  app.post(
-    '/api/versions/:id/restore',
-    requireAdmin,
-    asyncRoute((req, res) => res.json(rollback(owner(req), String(req.params.id))))
-  )
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Ruta de API no encontrada.' }))
   const staticDir = resolve(process.env.AERIS_STATIC_DIR || join(process.cwd(), 'dist'))
   if (existsSync(staticDir)) {
@@ -513,13 +462,11 @@ export function createApp() {
   app.use((err: unknown, _req: Request, res: Response, _next: express.NextFunction) => {
     if (res.headersSent) return
     const validation = err instanceof z.ZodError
-    res
-      .status(validation ? 400 : 422)
-      .json({
-        error: validation
-          ? err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
-          : (err as Error).message || 'Error inesperado.'
-      })
+    res.status(validation ? 400 : 422).json({
+      error: validation
+        ? err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
+        : (err as Error).message || 'Error inesperado.'
+    })
   })
   return app
 }

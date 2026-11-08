@@ -1,6 +1,6 @@
 {
   "name": "aeris-workspace",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "AERIS: collaborative agents, observable iterations and deliberate cost control",
@@ -14,9 +14,11 @@
     "build": "npm run typecheck && vite build && node scripts/build.mjs",
     "start": "node build/server/index.mjs",
     "desktop": "electron .",
-    "desktop:build": "npm run build && electron-builder --win portable --x64",
+    "desktop:build": "npm run tools:pack && npm run build && electron-builder --win portable --x64",
     "check": "npm run typecheck && npm test",
-    "format": "prettier --write src server shared cli tests desktop scripts *.json *.ts docs README.md AGENTS.md"
+    "format": "prettier --write src server shared cli tests desktop scripts *.json *.ts docs README.md AGENTS.md",
+    "tools:setup": "python scripts/setup_tools.py",
+    "tools:pack": "python scripts/setup_tools.py --pack"
   },
   "build": {
     "appId": "dev.aeris.workspace",
@@ -38,7 +40,13 @@
     },
     "portable": {
       "artifactName": "AERIS-${version}-Windows.exe"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "build/worker/aeris-analysis",
+        "to": "analysis"
+      }
+    ]
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.2.1",

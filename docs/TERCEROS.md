@@ -25,3 +25,9 @@ Las copias Markdown de referencia eliminan iconos decorativos para cumplir la re
 Logseq se consulta como referencia de arquitectura de conocimiento local. AERIS integra DataScript como dependencia y implementa sus propios contratos de notas, recuperación y UI. No incluye el núcleo AGPL de Logseq ni se presenta como una distribución de Logseq.
 
 Las tipografías y capturas facilitadas por el usuario se mantienen en `references/` para uso local. Los recursos originales de terceros no forman parte del código activo publicado. El icono AERIS y la escena de fábrica son recursos originales del proyecto.
+
+## Herramientas de la versión 1.0
+
+Los logotipos monocromos proceden de Lobe Icons. El aviso MIT está junto a los SVG en `public/providers/LICENSE`. Las marcas identifican proveedores. [Lobe Icons](https://github.com/lobehub/lobe-icons)
+
+El proceso de análisis utiliza DuckDB, openpyxl, python-docx, pypdf y defusedxml. PyInstaller empaqueta el proceso y sus dependencias para Windows. Los pesos de Qwen y llama.cpp se usaron de forma local para la evaluación y no forman parte del instalador. Las fuentes de los marcos comparados se mantienen mediante el manifiesto de referencias.

@@ -22,9 +22,8 @@ export function Agents({ onSelect }: { onSelect: (run: Run) => void }) {
   const { snapshot, refresh, notify } = useWorkspace()
   const [open, setOpen] = useState(false)
   const [prompt, setPrompt] = useState('')
-  const [first, setFirst] = useState('gpt-5.4-mini')
-  const [second, setSecond] = useState('claude-sonnet-5-5')
-  const [mode, setMode] = useState('demo')
+  const [first, setFirst] = useState('auto')
+  const [second, setSecond] = useState('auto')
   const [busy, setBusy] = useState(false)
   async function launch(e: FormEvent) {
     e.preventDefault()
@@ -36,7 +35,6 @@ export function Agents({ onSelect }: { onSelect: (run: Run) => void }) {
         title: prompt.slice(0, 65) + ' / constructor',
         model: first,
         reviewer: second,
-        mode,
         session: room
       })
       try {
@@ -45,7 +43,6 @@ export function Agents({ onSelect }: { onSelect: (run: Run) => void }) {
           title: prompt.slice(0, 65) + ' / revisión',
           model: second,
           reviewer: first,
-          mode,
           session: room
         })
       } catch (e) {
@@ -66,11 +63,7 @@ export function Agents({ onSelect }: { onSelect: (run: Run) => void }) {
   }
   return (
     <>
-      <SectionTitle
-        eyebrow="INTELIGENCIA EN CONJUNTO"
-        title="Agentes"
-        subtitle="Diferentes modelos, un objetivo compartido. Coordina, revisa e itera."
-      >
+      <SectionTitle title="Agentes">
         <button className="button primary" onClick={() => setOpen(true)}>
           <Plus size={14} />
           Lanzar equipo
@@ -91,7 +84,6 @@ export function Agents({ onSelect }: { onSelect: (run: Run) => void }) {
                   {active.length ? 'Trabajando' : config?.hasKey ? 'Disponible' : 'Sin API'}
                 </span>
               </div>
-              <span className="eyebrow">AGENTE {String(i + 1).padStart(2, '0')}</span>
               <h2>{m.name}</h2>
               <p>
                 {providers.find((p) => p.id === m.provider)?.name} · nivel {m.tier}
@@ -130,7 +122,6 @@ export function Agents({ onSelect }: { onSelect: (run: Run) => void }) {
         <div className="panel-heading">
           <div>
             <h2>Conversaciones entre agentes</h2>
-            <p>Mensajes persistentes compartidos por sala entre web y terminales.</p>
           </div>
           <GitBranch size={17} />
         </div>
@@ -151,10 +142,7 @@ export function Agents({ onSelect }: { onSelect: (run: Run) => void }) {
               </div>
             ))
         ) : (
-          <Empty
-            title="La conversación empieza con una misión"
-            text="Lanza un equipo para ver cómo intercambia hallazgos y correcciones."
-          />
+          <Empty title="Sin mensajes en la sala" />
         )}
       </section>
       <Modal
@@ -178,31 +166,38 @@ export function Agents({ onSelect }: { onSelect: (run: Run) => void }) {
             <label>
               Constructor
               <select value={first} onChange={(e) => setFirst(e.target.value)}>
-                {snapshot?.settings.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
+                <option value="auto">Automático</option>
+                {snapshot?.settings.models
+                  .filter((m) =>
+                    snapshot.settings.providers.some(
+                      (p) => p.id === m.provider && p.enabled && p.hasKey
+                    )
+                  )
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
               </select>
             </label>
             <label>
               Revisor
               <select value={second} onChange={(e) => setSecond(e.target.value)}>
-                {snapshot?.settings.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
+                <option value="auto">Automático</option>
+                {snapshot?.settings.models
+                  .filter((m) =>
+                    snapshot.settings.providers.some(
+                      (p) => p.id === m.provider && p.enabled && p.hasKey
+                    )
+                  )
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
               </select>
             </label>
           </div>
-          <label>
-            Modo
-            <select value={mode} onChange={(e) => setMode(e.target.value)}>
-              <option value="demo">Demostración</option>
-              <option value="live">APIs reales</option>
-            </select>
-          </label>
           <p className="form-note">
             Cada misión tiene su propio presupuesto. En modo API, ambos modelos deben estar
             conectados.
@@ -227,7 +222,6 @@ export function TerminalView() {
   const [history, setHistory] = useState<{ type: string; text: string }[]>([])
   const [room, setRoom] = useState('general')
   const [model, setModel] = useState('auto')
-  const [mode, setMode] = useState<'demo' | 'live'>('demo')
   const [busy, setBusy] = useState(false)
   const [selected, setSelected] = useState<Run | null>(null)
   const bottom = useRef<HTMLDivElement>(null)
@@ -252,13 +246,10 @@ export function TerminalView() {
           ...h,
           {
             type: 'system',
-            text: '/help · /clear · /demo · /live · /model ID · /room NOMBRE\n/files [ruta] · /open archivo · /config · /worktree nombre\n/message DESTINO texto · /stop\nEscribe un objetivo para iniciar una misión.'
+            text: '/help · /clear · /model ID · /room NOMBRE\n/files [ruta] · /open archivo · /config · /worktree nombre\n/message DESTINO texto · /stop\nEscribe un objetivo para iniciar una misión.'
           }
         ])
-      else if (text === '/demo' || text === '/live') {
-        setMode(text === '/demo' ? 'demo' : 'live')
-        setHistory((h) => [...h, { type: 'system', text: `Modo: ${text.slice(1)}` }])
-      } else if (text.startsWith('/model ')) setModel(text.slice(7).trim())
+      else if (text.startsWith('/model ')) setModel(text.slice(7).trim())
       else if (text.startsWith('/room ')) setRoom(text.slice(6).trim())
       else if (text.startsWith('/files')) {
         const files = await api(`/files?path=${encodeURIComponent(text.slice(7).trim() || '.')}`)
@@ -287,7 +278,7 @@ export function TerminalView() {
       } else if (text === '/stop' && run) await api(`/runs/${run.id}/stop`, {})
       else if (text.startsWith('/')) throw new Error('Comando desconocido. Escribe /help.')
       else {
-        const result = await api<Run>('/runs', { prompt: text, model, mode, session: room })
+        const result = await api<Run>('/runs', { prompt: text, model, session: room })
         setSelected(result)
       }
       await refresh()
@@ -299,11 +290,7 @@ export function TerminalView() {
   }
   return (
     <>
-      <SectionTitle
-        eyebrow="TODO EL CONTROL. DESDE UNA LÍNEA."
-        title="Terminal"
-        subtitle="La misma inteligencia, con una interfaz hecha para construir."
-      />
+      <SectionTitle title="Terminal" />
       <section className="terminal-window panel">
         <div className="terminal-top">
           <span>
@@ -311,15 +298,12 @@ export function TerminalView() {
             aeris / {room}
           </span>
           <div>
-            <span className="tiny-label">{mode.toUpperCase()}</span>
             <span className="mono">{model}</span>
           </div>
         </div>
         <div className="terminal-output">
           <pre className="ascii-banner">{banner}</pre>
-          <p className="terminal-tagline">
-            Intelligence, in progress. <span>v0.1.0</span>
-          </p>
+          <p className="terminal-tagline">AERIS 1.0</p>
           <p className="terminal-help">
             Escribe un objetivo para empezar. /help para ver los comandos.
           </p>
@@ -432,11 +416,7 @@ export function Files() {
   }
   return (
     <>
-      <SectionTitle
-        eyebrow="EL CONTEXTO EMPIEZA AQUÍ"
-        title="Archivos"
-        subtitle="Explora y edita los archivos del espacio de trabajo."
-      />
+      <SectionTitle title="Archivos" />
       <div className="file-workspace panel">
         <aside>
           <div className="file-toolbar">

@@ -163,34 +163,3 @@ export function retrieveContext(owner: string, query: string, maxTokens = 1800):
       .join('\n')
   }
 }
-
-export function seedContext(owner: string) {
-  if (listPages(owner).length) return
-  const initial = [
-    [
-      'AERIS',
-      '- Un espacio para [[Agentes]] que resuelven problemas y mejoran con evidencia.\n- Los recursos se gestionan con [[Presupuestos]] y [[Router de modelos]].\n- Las decisiones de mejora se registran en [[Evolución]].\n\n#proyecto #aeris'
-    ],
-    [
-      'Agentes',
-      '- El constructor produce un candidato. El revisor devuelve una evaluación.\n- Ambos comparten hallazgos en una sala de colaboración.\n- Una evaluación LLM es una opinión; [[Evolución]] usa además verificaciones deterministas.\n\n#agentes #colaboracion'
-    ],
-    [
-      'Presupuestos',
-      '- Contabilizar tokens de entrada, salida y caché según usage del proveedor.\n- Reservar presupuesto antes de cada llamada.\n- Aplicar Caveman y Ponytail para respuestas concisas.\n- Consultar [[Router de modelos]] para elegir capacidad adecuada.\n\n#tokens #costes'
-    ],
-    [
-      'Router de modelos',
-      '- Elegir entre capacidad baja, media, alta y razonamiento.\n- El clasificador designado decide complejidad; se usa selección local si no está disponible.\n- Preferir el modelo configurado más económico que cumpla el nivel.\n- Respetar [[Presupuestos]].\n\n#modelos #router'
-    ],
-    [
-      'Evolución',
-      '- Comparar la política estable y una candidata con el mismo conjunto de validación.\n- Rechazar regresiones y mantener rollback.\n- Mantener el test final fuera del optimizador.\n- Las políticas de inventario sintético se evalúan sin llamadas a LLMs.\n\n#rsi #evaluacion'
-    ],
-    [
-      'Inventario sintético',
-      '- Los vehículos del simulador son datos de demostración. Precios expresados en MXN.\n- Solo mostrar vehículos disponibles. Interpretar presupuesto máximo como límite inclusivo.\n- El simulador de pagos no representa una oferta de financiamiento.\n- Ver [[Evolución]] para cambios de política.\n\n#inventario #demo'
-    ]
-  ]
-  for (const [title, content] of initial) savePage(owner, { title, content })
-}

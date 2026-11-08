@@ -1,0 +1,42 @@
+[
+  {
+    "repository": "FoundationAgents/MetaGPT",
+    "revision": "11cdf466d042aece04fc6cfd13b28e1a70341b1f"
+  },
+  {
+    "repository": "OpenBMB/ChatDev",
+    "revision": "464a681ba7bda869db97a50c5fa707c9a0fb57a0"
+  },
+  {
+    "repository": "crewAIInc/crewAI",
+    "revision": "441ea7fc02b73041aaf70bd8b48cf9e47bd22d17"
+  },
+  {
+    "repository": "openai/openai-agents-python",
+    "revision": "27c75c5f9c5fd957d28c04fb7e9eeacaad4630a9"
+  },
+  {
+    "repository": "microsoft/agent-framework",
+    "revision": "924a6e50ec0336f3c965ee8b1151c54085888b6e"
+  },
+  {
+    "repository": "FoundationAgents/AFlow",
+    "revision": "3f457218fc716093fe53f6df8a5d5e6379d66346"
+  },
+  {
+    "repository": "FoundationAgents/AOrchestra",
+    "revision": "14a1a2051d6b03c479b706f8f555a60b8419e3b5"
+  },
+  {
+    "repository": "stanfordnlp/dspy",
+    "revision": "efcb1e4232b90705a414e4b4e7cf47b503764c53"
+  },
+  {
+    "repository": "langchain-ai/langgraph",
+    "revision": "e5e37b5d70dbfd93c7006bd90a658c6179a95946"
+  },
+  {
+    "repository": "anomalyco/opencode",
+    "revision": "5a47777cc4c7511082e9ca5d4b430cea8113c4bb"
+  }
+]

@@ -1,119 +1,35 @@
-# Instrucciones de AERIS
+# Operación
 
-## Abrir el proyecto
+## Espacios y cuentas
 
-1. Instalar Node.js 24 y Git.
-2. Abrir una terminal dentro de AERIS.
-3. Ejecutar `npm ci` y `npm run dev`.
-4. Abrir `http://localhost:5173/app`.
+En local se abre la cuenta del equipo. Para un servidor compartido configura `AERIS_AUTH_REQUIRED=true`, una URL pública HTTPS y los secretos OAuth si vas a ofrecer Google o GitHub. Los callbacks terminan en `/api/auth/google/callback` y `/api/auth/github/callback`. La primera cuenta registrada administra modelos, precios, herramientas de archivos y experimentos. Utiliza un directorio de datos y un proceso servidor por espacio. El almacén JSON y los archivos de documentos deben estar en un volumen persistente.
 
-El acceso local crea una sesión del propietario de la computadora. Se puede explorar sin conectar proveedores. Usa el formulario de la página de login para probar el registro y las sesiones por correo.
+Al actualizar desde 0.1, la migración identifica las misiones de demostración por su modo, las notas iniciales por su contenido y los experimentos por su registro anterior. Conserva las notas editadas, el ledger de uso real y las credenciales. Cierra la versión anterior antes de abrir el portable nuevo.
 
-## Apariencia y actividad de los agentes
+## Proveedores
 
-El espacio abre en negro. El botón de sol o luna cambia entre negro y blanco y recuerda la elección en cada navegador o instalación de escritorio. La aplicación carga la copia local de SF Pro desde `public/fonts/SFPro.woff2`. En un clon sin esa fuente utiliza la tipografía del sistema.
+En Configuración abre **Proveedores y APIs**. Registra una clave o configura el nombre de variable que figura en `.env.example`. NVIDIA NIM usa su endpoint compatible con Chat Completions. Declara la cuota gratuita solo cuando la cuenta la tenga habilitada. Para un contrato de pago introduce sus tarifas antes de ejecutar. Una clave puede dar acceso a varios modelos. El identificador del modelo debe ser único en el catálogo de este espacio.
 
-La isla de la barra superior muestra las misiones en curso. Al abrirla se ven las iteraciones, los tokens, el coste y el acceso al inspector de la misión. En reposo permite consultar la última misión. Pulsa Escape para cerrarla.
+El servidor local compatible usa `http://127.0.0.1:8089/v1/chat/completions`. Configura la clave real del proceso, o escribe `local` si tu servicio de loopback admite acceso sin clave. El alias del servidor debe coincidir con el del catálogo. El modelo utilizado para la prueba fue `qwen2.5-0.5b-instruct`. El portable incluye el analizador y los logotipos. Los pesos LLM se instalan por separado.
 
-Abre **Estudio de agentes** y selecciona un personaje para consultar su función. Las estaciones reaccionan a los eventos del motor y los mensajes recientes de las salas identifican al remitente y al destinatario. **Previsualizar** reproduce una conversación de ejemplo sin ejecutar modelos. **Pausar** detiene la animación visual. La preferencia de movimiento reducido del sistema también se respeta.
+## Documentos y análisis
 
-## Ejecutar modelos reales
+En **Análisis de archivos**, abre un documento. Para una tabla, selecciona la hoja, operación, grupo y filtros. Puedes descargar el resultado verificable como JSON o como gráfica SVG. Las gráficas paginan 32 grupos, el JSON incluye todos. La CLI exporta todas las páginas a un HTML autónomo.
 
-1. Ir a Proveedores y APIs.
-2. Conectar una credencial y habilitar el proveedor.
-3. Comprobar ID, capacidad de visión y precios por millón de tokens.
-4. Crear una misión y cambiar a Usar APIs.
-5. Elegir constructor y revisor; ambos deben tener un proveedor conectado.
-6. Establecer presupuesto, iteraciones máximas y objetivo.
-7. Iniciar y revisar el inspector.
+El conteo incluye las filas que pasan el filtro. La suma, media, mediana, desviación poblacional, mínimos y máximos exigen números válidos en esas filas. Para utilidad puedes indicar un campo `subtract` que se resta de la métrica por fila antes de agregar. Las deducciones, impuestos y unidades dependen de las columnas elegidas. El motor reconoce encabezados habituales de moneda o admite `currency_column`, rechaza mezclas y conserva decimales y negativos. La media y desviación se contrastan con tolerancia numérica. Los valores atípicos se cuentan con la regla de 1.5 rangos intercuartílicos y las columnas llamadas fecha/date se revisan como fechas ISO.
 
-El router usa el clasificador designado si está disponible. Si no lo está, emplea reglas locales. La selección manual respeta el modelo seleccionado y no cambia silenciosamente de proveedor.
+Para PDF, Word o texto, busca términos y examina los fragmentos con página, párrafo o fila de tabla. Excel usa valores almacenados. Un PDF escaneado requiere OCR externo. La extracción de texto de un PDF no valida la estructura de una tabla. Límites por archivo de 5 MB, 250 000 filas, 2 millones de celdas y 5 000 grupos.
 
-Las tarifas verificadas corresponden a las fuentes enlazadas en cada modelo. Deben revisarse si cambia el proveedor, el modelo, la modalidad, la región o el contrato. El importe de AERIS es una contabilidad de tokens con la tarifa configurada, no una lectura de la factura del proveedor. Se actualiza después de cada respuesta. Las llamadas de clasificación y revisión también se incluyen y se atribuyen a sus propios modelos.
+## Misiones
 
-Si falta `usage`, la ejecución se detiene y el coste se identifica como incompleto. El razonamiento no reportado queda en `null`; no se infiere. Los tokens de razonamiento reportados como parte de salida no se cobran dos veces.
+Adjunta documentos o imágenes y escribe un objetivo. En automático, el planificador puede devolver hasta cuatro pasos. El constructor solicita herramientas, intercambia mensajes y devuelve el resultado. Una revisión de código solicitada o un revisor explícito habilita el ciclo de crítica. Las notas se recuperan por coincidencia y presupuesto. Las imágenes se envían a modelos marcados con visión. Accede al flujo ejecutado, a los artefactos y a la razón de parada desde la misión.
 
-## Archivos y worktrees
+Para solicitudes de cálculo reconocidas sobre tablas, la misión publica los valores del artefacto verificado. Si el modelo omite el cálculo, el motor lo solicita una vez más. Si sigue faltando evidencia, la misión termina con error. El análisis manual permite elegir y revisar la operación directamente.
 
-Lectura y búsqueda se limitan al directorio configurado. `.git`, `.aeris`, archivos `.env`, dependencias y enlaces simbólicos están protegidos. Activa Crear y editar archivos en Configuración para permitir escritura.
+La CLI usa la misma API. En dos terminales, usa `chat --room equipo --name atlas` y `chat --room equipo --name nova`, y consulta `/help`. Los permisos de escritura y comprobaciones Git se activan en Configuración. Para apuntar al escritorio, configura `AERIS_URL=http://127.0.0.1:4319` y `AERIS_DATA_DIR` con el directorio `engine` de los datos de usuario de AERIS.
 
-La CLI permite listar, leer, buscar y escribir archivos. `write --from archivo` toma el contenido desde un archivo local. Las comprobaciones de Git admiten únicamente status, diff y branches; los modelos no reciben una shell arbitraria.
+## Experimentos
 
-```powershell
-npm run cli -- worktree feature-router
-npm run cli -- read README.md
-npm run cli -- search "router" --path server
-```
+Desde el resultado de una misión o análisis, **Validar para memoria** contrasta la operación con una respuesta independiente y registra el vínculo a la traza. La pregunta y el esquema identifican el procedimiento. La consolidación y promoción requieren casos adicionales de validación.
 
-Los worktrees se crean en `.aeris/worktrees` con ramas `aeris/nombre`. Requieren un repositorio con al menos un commit. No cambian automáticamente el directorio de ejecución de una misión; usa otra instancia del motor con `AERIS_WORKSPACE` apuntando al worktree para trabajar allí.
-
-## Colaboración
-
-En Agentes, Lanzar equipo crea dos misiones concurrentes y una sala compartida. Cada misión tiene su propio presupuesto. Las ejecuciones comparten mensajes; no son un sistema de consenso y pueden discrepar.
-
-En dos terminales, usa la misma sala y nombres diferentes:
-
-```powershell
-npm run cli -- chat --name atlas --room equipo
-npm run cli -- chat --name nova --room equipo
-```
-
-Los comandos `/message`, `/messages`, `/files` y `/stop` siguen disponibles mientras se ejecuta una misión. El texto sin prefijo inicia una nueva misión. Ctrl+C sale del chat; para cancelar trabajo del servidor usa `/stop`.
-
-## Cerebro de contexto
-
-Crea páginas o importa hasta 50 archivos Markdown por operación, de máximo 80 KB cada uno. Los enlaces `[[Página]]` conectan notas y `#etiquetas` ayudan a recuperar información.
-
-El grafo permite seleccionar y arrastrar nodos. La vista de página ofrece edición, enlaces internos y backlinks. Puedes desactivar una página para excluirla del contexto del agente.
-
-Probar recuperación muestra los fragmentos elegidos para un objetivo. La recuperación considera términos de título, contenido, etiquetas y referencias explícitas consultadas con DataScript. Se seleccionan hasta seis páginas y cuatro bloques por página. La estimación usa un margen conservador de caracteres; la contabilidad real procede del proveedor después de la llamada.
-
-No se realizan embeddings ni se envía el cuaderno completo automáticamente. Los documentos y notas son contexto de tarea y no autoridad para cambiar instrucciones o permisos.
-
-## Skills
-
-Caveman, Ponytail y Evidence first están habilitadas por defecto. Los perfiles activos son adaptaciones compactas para el motor de AERIS. Las referencias originales y licencias se conservan en `skills/upstream`. Puedes activar, desactivar o importar un `SKILL.md` desde web o CLI.
-
-No se promete un porcentaje fijo de ahorro. Compara tokens y resultados en ejecuciones equivalentes.
-
-## Paradas
-
-- Calidad objetivo alcanzada.
-- Presupuesto consumido o reserva insuficiente para la siguiente llamada.
-- Número máximo de iteraciones.
-- Falta de mejora durante la paciencia configurada.
-- Cancelación del usuario.
-- Error explícito del proveedor o respuesta sin uso.
-- Límite global de diez minutos por misión.
-- Reinicio del motor: las misiones pendientes se recuperan como detenidas.
-
-El mejor candidato se conserva si una iteración empeora la puntuación.
-
-## Conectar OAuth
-
-Configura en `.env` los IDs y secretos de cliente. Para el entorno de desarrollo registra:
-
-```text
-http://localhost:5173/api/auth/google/callback
-http://localhost:5173/api/auth/github/callback
-```
-
-Para producción usa el dominio HTTPS de `AERIS_PUBLIC_URL` y las mismas rutas. Configura un cliente para escritorio con origen `http://127.0.0.1:4319` si el proveedor lo admite. Los botones no simulan un login exitoso cuando faltan credenciales.
-
-## Servidor del hackathon
-
-```powershell
-npm ci
-npm run check
-npm run build
-```
-
-Configura `HOST=0.0.0.0`, `AERIS_AUTH_REQUIRED=true` y `AERIS_PUBLIC_URL` con el dominio público. Ejecuta `npm start` detrás de un proxy HTTPS con soporte SSE. Usa almacenamiento persistente para `AERIS_DATA_DIR` y configura el workspace del servidor.
-
-El prototipo está diseñado para un propietario y un espacio local compartido. Las cuentas tienen misiones y notas separadas, pero las claves, políticas y archivos son del espacio y solo su administrador puede cambiarlos. Un servicio público multiempresa necesita almacenamiento transaccional, autorización por organización, invitaciones, verificación de correo, recuperación de cuentas y pruebas operativas antes de desplegarse como SaaS.
-
-## Escritorio y CLI juntos
-
-El ejecutable usa `http://127.0.0.1:4319`. Para dirigir la CLI a esa instancia, establece `AERIS_URL` y `AERIS_DATA_DIR` apuntando al directorio `engine` dentro de los datos de usuario de la aplicación Electron. La ubicación habitual es `%APPDATA%/AERIS/engine`.
-
-Guarda copia de todo el directorio de datos, incluida la clave maestra. `workspace.json.bak` conserva el estado anterior a cada escritura. No deben ejecutarse dos servidores sobre el mismo directorio de datos: usa una sola API por espacio.
+El protocolo, los datos requeridos y las condiciones para promover o restaurar una política están en [el ensayo del hackathon](HACKATHON.md). Las mediciones empiezan vacías en cada espacio.

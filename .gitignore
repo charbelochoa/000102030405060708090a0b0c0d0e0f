@@ -23,3 +23,8 @@ references/cli/
 references/assets/
 references/context/
 references/architecture/
+
+references/brain/
+references/code/
+references/frameworks/
+__pycache__/

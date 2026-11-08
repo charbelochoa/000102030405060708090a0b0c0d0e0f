@@ -35,7 +35,13 @@ export function userContent(text: string, attachments: Attachment[], anthropic: 
     } else {
       blocks.push({
         type: 'text',
-        text: `<attachment name=${JSON.stringify(file.name)}>\n${Buffer.from(file.data, 'base64').toString('utf8')}\n</attachment>`
+        text: JSON.stringify({
+          attachment: file.name,
+          type: file.type,
+          file_index: attachments.indexOf(file),
+          access:
+            'Use inspect_document, search_document or analyze_table. Never infer totals from excerpts.'
+        })
       })
     }
   }
@@ -45,7 +51,12 @@ export function userContent(text: string, attachments: Attachment[], anthropic: 
 export async function complete(
   model: Model,
   messages: ChatMessage[],
-  options: { tools?: any[]; maxOutput: number; signal: AbortSignal }
+  options: {
+    tools?: any[]
+    maxOutput: number
+    jsonSchema?: Record<string, unknown>
+    signal: AbortSignal
+  }
 ): Promise<Completion> {
   const provider = providers.find((p) => p.id === model.provider)!
   const key = getKey(model.provider)
@@ -69,6 +80,13 @@ export async function complete(
           ? { max_completion_tokens: options.maxOutput }
           : { max_tokens: options.maxOutput })
       }
+  if (model.provider === 'local' && !options.tools?.length) {
+    body.temperature = 0
+    body.seed = 42
+    body.response_format = options.jsonSchema
+      ? { type: 'json_schema', json_schema: { name: 'analysis', schema: options.jsonSchema } }
+      : { type: 'json_object' }
+  }
   if (options.tools?.length)
     body.tools = anthropic
       ? options.tools.map((t) => ({

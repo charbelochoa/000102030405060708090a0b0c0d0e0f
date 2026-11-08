@@ -1,0 +1,189 @@
+.lab-panel {
+  padding: clamp(16px, 2.4vw, 28px);
+  margin: 18px 0;
+  min-width: 0;
+}
+.lab-panel header,
+.lab-result header,
+.lab-result footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.lab-panel header h2,
+.lab-result header h3 {
+  margin: 0 auto 0 0;
+  font-size: 17px;
+  letter-spacing: -0.03em;
+}
+.lab-panel p,
+.empty-measurement {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.empty-measurement {
+  padding: 24px;
+}
+.lab-panel label,
+.lab-panel details,
+.lab-result details {
+  font-size: 13px;
+}
+.lab-panel select,
+.lab-panel input,
+.lab-result select,
+.overview-toolbar > select {
+  min-height: 32px;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 10px;
+  max-width: 100%;
+}
+.lab-form {
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 20px 0 0;
+}
+.lab-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--secondary);
+}
+.lab-table {
+  max-width: 100%;
+  overflow: auto;
+  max-height: 380px;
+}
+.lab-panel table,
+.lab-result table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.lab-panel th,
+.lab-result th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  font-weight: 500;
+  color: var(--muted);
+}
+.lab-panel td,
+.lab-panel th,
+.lab-result td,
+.lab-result th {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.lab-panel details,
+.lab-result details {
+  padding: 12px 0;
+}
+.lab-panel summary,
+.lab-result summary {
+  cursor: pointer;
+}
+.lab-result img {
+  width: 100%;
+  border-radius: 8px;
+}
+.lab-result code,
+.lab-result pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.lab-result footer {
+  margin-top: 12px;
+}
+.lab-panel blockquote {
+  border-inline-start: 2px solid var(--line);
+  margin: 1rem 0;
+  padding-left: 1rem;
+  white-space: pre-wrap;
+}
+.workflow-steps {
+  display: grid;
+  gap: 8px;
+  padding-inline-start: 22px;
+  font-size: 13px;
+}
+.workflow-steps li {
+  border-inline-start: 1px solid var(--line);
+  padding: 6px 10px;
+}
+.provider-mark img {
+  object-fit: contain;
+  filter: invert(1);
+}
+:root[data-theme='light'] .provider-mark img {
+  filter: none;
+}
+.landing-studio {
+  max-width: 880px;
+  margin: 42px auto 0;
+}
+.lab-panel .event-line > p {
+  flex: 1;
+}
+@media (max-width: 650px) {
+  .lab-panel {
+    overflow: auto;
+  }
+  .lab-form label {
+    min-width: 42%;
+    flex: 1;
+  }
+  .lab-result header {
+    gap: 7px;
+  }
+  .lab-panel .event-line {
+    flex-wrap: wrap;
+  }
+}
+
+.workflow-view {
+  margin-top: 18px;
+}
+.workflow-view h3 {
+  font-size: 14px;
+}
+.workflow-nodes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px 16px;
+}
+.workflow-nodes button {
+  position: relative;
+  padding: 6px 9px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.workflow-nodes button + button::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  width: 15px;
+  height: 1px;
+  background: var(--line);
+}
+.workflow-nodes button[aria-pressed='true'] {
+  border-color: var(--secondary);
+  color: var(--text);
+}
+.workflow-view p {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}

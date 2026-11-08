@@ -53,30 +53,7 @@ export function Models({ router = false }: { router?: boolean }) {
   }
   return (
     <>
-      <SectionTitle
-        eyebrow={router ? 'EL MODELO ADECUADO PARA CADA RETO' : 'CONECTA TU INTELIGENCIA'}
-        title={router ? 'Router de modelos' : 'Proveedores y APIs'}
-        subtitle={
-          router
-            ? 'Asigna la complejidad. Equilibra capacidad, coste y contexto.'
-            : 'Tus modelos. Tus claves. Un espacio de trabajo compartido.'
-        }
-      />
-      <div className="settings-intro panel">
-        <span className="section-icon">
-          {router ? <Route size={18} /> : <KeyRound size={18} />}
-        </span>
-        <div>
-          <h2>
-            {router ? 'Un clasificador, múltiples posibilidades.' : 'Preparado para conectar.'}
-          </h2>
-          <p>
-            {router
-              ? 'El clasificador elige un nivel de complejidad. El router selecciona el modelo configurado más económico de ese nivel; su consumo también se registra.'
-              : 'Las claves se guardan cifradas en el servidor local y nunca se devuelven al navegador. Puedes usar variables de entorno o añadirlas aquí.'}
-          </p>
-        </div>
-      </div>
+      <SectionTitle title={router ? 'Router de modelos' : 'Proveedores y APIs'} />
       {router && (
         <section className="panel settings-section">
           <div className="setting-row">
@@ -93,7 +70,7 @@ export function Models({ router = false }: { router?: boolean }) {
           <div className="setting-row">
             <div>
               <h3>Modelo clasificador</h3>
-              <p>Si no está conectado, se usan reglas locales de complejidad.</p>
+              <p>Si no está disponible, se usa el modelo ligero conectado.</p>
             </div>
             <select
               value={settings.routerModel}
@@ -143,6 +120,15 @@ export function Models({ router = false }: { router?: boolean }) {
                 <i />
                 {config.hasKey ? 'Credencial configurada' : 'Sin conectar'}
               </div>
+              {p.id === 'nvidia' && !config.freeTier && (
+                <p>Activa tu cuota gratuita o configura las tarifas de tu contrato.</p>
+              )}
+              {p.id === 'local' && (
+                <p>
+                  Servidor compatible en 127.0.0.1:8089. Introduce la clave del servidor o «local»
+                  para acceso sin clave.
+                </p>
+              )}
               <label className="key-field">
                 <KeyRound size={13} />
                 <input
@@ -172,11 +158,11 @@ export function Models({ router = false }: { router?: boolean }) {
                   </button>
                 )}
               </div>
-              {p.id === 'google' && (
+              {['google', 'nvidia'].includes(p.id) && (
                 <div className="free-tier-setting">
                   <span>Mi cuenta usa la cuota gratuita</span>
                   <Toggle
-                    label="Declarar cuota gratuita de Gemini"
+                    label={'Declarar cuota gratuita de ' + p.name}
                     checked={config.freeTier}
                     onChange={(value) =>
                       void patch({
@@ -457,29 +443,12 @@ export function Skills() {
   }
   return (
     <>
-      <SectionTitle
-        eyebrow="BUEN CRITERIO, POR DEFECTO"
-        title="Skills"
-        subtitle="Dale a tus agentes instrucciones reutilizables, sin añadir ruido."
-      >
+      <SectionTitle title="Skills">
         <button className="button primary" onClick={() => setOpen(true)}>
           <Plus size={14} />
           Añadir skill
         </button>
       </SectionTitle>
-      <div className="settings-intro panel">
-        <span className="section-icon">
-          <Sparkles size={18} />
-        </span>
-        <div>
-          <h2>Hacer más también significa escribir menos.</h2>
-          <p>
-            Caveman y Ponytail están activos desde el inicio. Los perfiles compactos preservan sus
-            principios y reducen el contexto enviado en cada llamada. El ahorro se mide por
-            ejecución.
-          </p>
-        </div>
-      </div>
       <div className="skills-grid">
         {snapshot?.skills.map((s, i) => (
           <article className="panel skill-card" key={s.id}>
@@ -568,7 +537,7 @@ export function Skills() {
   )
 }
 
-export function Configuration() {
+export function Configuration({ onProviders }: { onProviders: () => void }) {
   const { snapshot, refresh, notify } = useWorkspace()
   const [draft, setDraft] = useState<Settings>(structuredClone(snapshot!.settings))
   const [busy, setBusy] = useState(false)
@@ -590,11 +559,12 @@ export function Configuration() {
   }
   return (
     <>
-      <SectionTitle
-        eyebrow="UN ESPACIO A TU MEDIDA"
-        title="Configuración"
-        subtitle="Decide cómo trabajan tus agentes y cuándo deben detenerse."
-      />
+      <SectionTitle title="Configuración">
+        <button className="button" onClick={onProviders}>
+          <KeyRound size={15} />
+          Proveedores y APIs
+        </button>
+      </SectionTitle>
       <form onSubmit={save} className="configuration-form">
         <section className="panel settings-section">
           <div className="settings-section-title">

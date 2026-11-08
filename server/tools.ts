@@ -2,9 +2,9 @@ import { lstat, realpath, readdir, readFile, mkdir, writeFile, stat } from 'node
 import { resolve, relative, dirname, isAbsolute, sep, join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { workspace, data, message } from './store'
-import { inventoryFilters, searchInventory, estimatePayment } from './inventory'
-import { stablePolicy } from './evolution'
+import { workspace, dataDir, data, message } from './store'
+import { evidenceDefinitions, evidenceTool } from './evidence-tools'
+import type { Run } from '../shared/types'
 
 const exec = promisify(execFile)
 const excluded = new Set([
@@ -24,11 +24,27 @@ const excluded = new Set([
 export async function safePath(input: string, root = workspace) {
   const canonicalRoot = await realpath(root)
   const target = resolve(canonicalRoot, input)
+  const statePath = await realpath(dataDir)
+  const stateRelative = relative(statePath, target)
+  if (
+    !stateRelative ||
+    (!isAbsolute(stateRelative) && stateRelative !== '..' && !stateRelative.startsWith('..' + sep))
+  )
+    throw new Error('Ruta de estado protegida.')
   const rel = relative(canonicalRoot, target)
   if (rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel))
     throw new Error('La ruta sale del espacio de trabajo.')
   const parts = rel.split(sep)
-  if (parts.some((p) => excluded.has(p.toLowerCase()) || p.toLowerCase().startsWith('.env') || /[:]/.test(p) || /[. ]$/.test(p) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(p)))
+  if (
+    parts.some(
+      (p) =>
+        excluded.has(p.toLowerCase()) ||
+        p.toLowerCase().startsWith('.env') ||
+        /[:]/.test(p) ||
+        /[. ]$/.test(p) ||
+        /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(p)
+    )
+  )
     throw new Error('Ruta protegida.')
   let current = canonicalRoot
   for (const part of parts) {
@@ -125,33 +141,7 @@ export async function runCheck(command: string) {
 }
 
 export const toolDefinitions = [
-  {
-    name: 'search_inventory',
-    description: 'Search a synthetic demo inventory in MXN. Not real dealer stock.',
-    parameters: {
-      type: 'object',
-      properties: {
-        maxPrice: { type: 'number' },
-        type: { type: 'string', enum: ['sedan', 'suv', 'hatchback', 'convertible'] },
-        fuel: { type: 'string' },
-        seats: { type: 'integer' }
-      }
-    }
-  },
-  {
-    name: 'estimate_payment',
-    description: 'Calculate a synthetic fixed-rate monthly payment, not a credit offer.',
-    parameters: {
-      type: 'object',
-      properties: {
-        vehicleId: { type: 'string' },
-        downPayment: { type: 'number' },
-        months: { type: 'integer' },
-        annualRate: { type: 'number' }
-      },
-      required: ['vehicleId', 'downPayment', 'months']
-    }
-  },
+  ...evidenceDefinitions,
   {
     name: 'list_files',
     description: 'List files in the current workspace.',
@@ -210,20 +200,16 @@ export async function executeTool(
   args: Record<string, any>,
   owner: string,
   room: string,
-  agent: string
+  agent: string,
+  run?: Run,
+  signal?: AbortSignal
 ) {
-  if (name === 'search_inventory')
-    return {
-      synthetic: true,
-      currency: 'MXN',
-      vehicles: searchInventory(inventoryFilters.parse(args), stablePolicy())
-    }
-  if (name === 'estimate_payment')
-    return estimatePayment(args.vehicleId, args.downPayment, args.months, args.annualRate)
+  if (evidenceDefinitions.some((t) => t.name === name) && run)
+    return evidenceTool(name, args, run, signal)
   if (
     ['list_files', 'read_file', 'search_files', 'write_file', 'run_check'].includes(name) &&
     owner !== 'local' &&
-    owner !== data.users.find((u) => u.provider !== 'demo')?.id
+    owner !== data.users[0]?.id
   )
     throw new Error('Esta herramienta requiere la cuenta administradora del espacio.')
   if (name === 'list_files') return listFiles(args.path || '.')

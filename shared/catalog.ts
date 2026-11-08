@@ -41,6 +41,22 @@ export const providers: {
     endpoint: 'https://api.x.ai/v1/chat/completions'
   },
   {
+    id: 'local',
+    name: 'Inferencia local',
+    ascii: '[L]',
+    color: '#cccccc',
+    env: 'AERIS_LOCAL_API_KEY',
+    endpoint: 'http://127.0.0.1:8089/v1/chat/completions'
+  },
+  {
+    id: 'nvidia',
+    name: 'NVIDIA NIM',
+    ascii: '[N]',
+    color: '#cccccc',
+    env: 'NVIDIA_API_KEY',
+    endpoint: 'https://integrate.api.nvidia.com/v1/chat/completions'
+  },
+  {
     id: 'deepseek',
     name: 'DeepSeek',
     ascii: '~v~',
@@ -137,6 +153,32 @@ export const catalog: Model[] = [
     0.025,
     'https://ai.google.dev/gemini-api/docs/pricing'
   ),
+  {
+    ...model(
+      'qwen2.5-0.5b-instruct',
+      'Qwen2.5 0.5B',
+      'local',
+      'low',
+      0,
+      0,
+      0,
+      'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF'
+    ),
+    vision: false
+  },
+  {
+    ...model(
+      'meta/llama-3.3-70b-instruct',
+      'Llama 3.3 70B',
+      'nvidia',
+      'medium',
+      0,
+      0,
+      0,
+      'https://build.nvidia.com/meta/llama-3_3-70b-instruct'
+    ),
+    vision: false
+  },
   model('grok-4.7', 'Grok 4.7', 'xai', 'high', 2, 6, 2, 'https://docs.x.ai/developers/models')
 ]
 
@@ -166,12 +208,13 @@ export const emptyUsage = (): Usage => ({
 export const usd = (nano: string) => Number(BigInt(nano)) / 1e9
 export const money = (nano: string, digits = 4) => `$${usd(nano).toFixed(digits)}`
 export const stopLabels: Record<string, string> = {
+  delivered: 'Resultado entregado',
   target: 'Objetivo alcanzado',
   budget: 'Límite de presupuesto',
   iterations: 'Máximo de iteraciones',
   plateau: 'Sin mejora significativa',
   user: 'Detenida por ti',
-  error: 'Error del proveedor',
+  error: 'Error de ejecución',
   recovered: 'Servidor reiniciado',
   timeout: 'Límite de tiempo: 10 minutos'
 }

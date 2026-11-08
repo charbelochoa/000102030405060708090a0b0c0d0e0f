@@ -10,6 +10,8 @@ import {
   Square,
   X
 } from 'lucide-react'
+import { fileTypes } from '../shared/file-types'
+import { ArtifactPanel } from './Lab'
 import { money, stopLabels } from '../shared/catalog'
 import type { Attachment, Run } from '../shared/types'
 import { api, formatTokens, shortDate, useWorkspace } from './lib'
@@ -29,7 +31,6 @@ export function NewMission({
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState('auto')
   const [reviewer, setReviewer] = useState('auto')
-  const [mode, setMode] = useState<'demo' | 'live'>('demo')
   const [files, setFiles] = useState<Attachment[]>([])
   const [busy, setBusy] = useState(false)
   const [budget, setBudget] = useState('0.50')
@@ -45,7 +46,6 @@ export function NewMission({
         prompt,
         model,
         reviewer,
-        mode,
         attachments: files,
         budget: Number(budget),
         maxIterations: iterations,
@@ -57,7 +57,7 @@ export function NewMission({
       onOpenChange(false)
       setPrompt('')
       setFiles([])
-      notify(mode === 'demo' ? 'Demostración en curso. Sin consumo de APIs.' : 'Misión iniciada.')
+      notify('Misión iniciada.')
     } catch (error) {
       notify((error as Error).message, true)
     } finally {
@@ -73,26 +73,8 @@ export function NewMission({
         break
       }
       const ext = file.name.split('.').at(-1)?.toLowerCase()
-      const mime =
-        (
-          {
-            md: 'text/markdown',
-            txt: 'text/plain',
-            json: 'application/json',
-            csv: 'text/csv'
-          } as Record<string, string>
-        )[ext || ''] || file.type
-      if (
-        ![
-          'image/png',
-          'image/jpeg',
-          'image/webp',
-          'text/plain',
-          'text/markdown',
-          'application/json',
-          'text/csv'
-        ].includes(mime)
-      ) {
+      const mime = fileTypes[ext as keyof typeof fileTypes] || file.type
+      if (!Object.values(fileTypes).some((t) => t === mime)) {
         notify(`Formato no admitido: ${file.name}`, true)
         continue
       }
@@ -107,29 +89,8 @@ export function NewMission({
     setFiles((previous) => [...previous, ...loaded])
   }
   return (
-    <Modal
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Una nueva misión"
-      description="Define el objetivo. AERIS construye, evalúa e itera."
-    >
+    <Modal open={open} onOpenChange={onOpenChange} title="Una nueva misión">
       <form onSubmit={submit} className="mission-form">
-        <div className="segmented mode-segment">
-          <button
-            type="button"
-            className={mode === 'demo' ? 'selected' : ''}
-            onClick={() => setMode('demo')}
-          >
-            Demostración
-          </button>
-          <button
-            type="button"
-            className={mode === 'live' ? 'selected' : ''}
-            onClick={() => setMode('live')}
-          >
-            Usar APIs
-          </button>
-        </div>
         <label className="field-label" htmlFor="mission-prompt">
           ¿Qué vamos a resolver?
         </label>
@@ -142,7 +103,7 @@ export function NewMission({
           maxLength={30000}
           required
           rows={5}
-          placeholder="Por ejemplo: analiza el proyecto y propone una estrategia para reducir los tiempos de respuesta de la API."
+          placeholder="Describe el objetivo"
         />
         <div className="attachment-list">
           {files.map((file, i) => (
@@ -165,7 +126,7 @@ export function NewMission({
           <input
             type="file"
             multiple
-            accept=".png,.jpg,.jpeg,.webp,.txt,.md,.json,.csv"
+            accept=".png,.jpg,.jpeg,.webp,.txt,.md,.json,.csv,.pdf,.docx,.xlsx"
             onChange={(e) => void attach(e.target.files)}
           />
         </label>
@@ -184,7 +145,7 @@ export function NewMission({
           <label>
             Agente revisor
             <select value={reviewer} onChange={(e) => setReviewer(e.target.value)}>
-              <option value="auto">Mismo modelo, rol independiente</option>
+              <option value="auto">Automático según la tarea</option>
               {settings?.models.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -240,11 +201,6 @@ export function NewMission({
             aria-label="Sala de colaboración"
           />
         </label>
-        <div className="form-note">
-          {mode === 'demo'
-            ? 'La demostración simula resultados, tokens y costes. No modifica archivos.'
-            : 'Cada respuesta y revisión consume tokens. Se reserva presupuesto antes de cada llamada.'}
-        </div>
         <div className="dialog-footer">
           <button type="button" className="button" onClick={() => onOpenChange(false)}>
             Cancelar
@@ -262,6 +218,7 @@ export function NewMission({
 export function MissionDetail({ run, onClose }: { run: Run | null; onClose: () => void }) {
   const { snapshot, refresh, notify } = useWorkspace()
   const current = snapshot?.runs.find((r) => r.id === run?.id) || run
+  const [selectedStep, setSelectedStep] = useState(0)
   const [tab, setTab] = useState('result')
   const events = snapshot?.events.filter((e) => e.runId === current?.id).slice(-40) || []
   async function stop() {
@@ -277,11 +234,7 @@ export function MissionDetail({ run, onClose }: { run: Run | null; onClose: () =
       open={!!current}
       onOpenChange={(value) => !value && onClose()}
       title={current?.title || 'Misión'}
-      description={
-        current
-          ? `${current.id.slice(0, 8)} · ${current.mode === 'demo' ? 'Demostración' : 'API real'}`
-          : ''
-      }
+      description={current ? `${current.id.slice(0, 8)}` : ''}
       drawer
     >
       {current && (
@@ -289,9 +242,7 @@ export function MissionDetail({ run, onClose }: { run: Run | null; onClose: () =
           <div className="detail-status">
             <Status run={current} />
             <span>{current.iterations.length} iteraciones</span>
-            <span>
-              {money(current.costNano)} {current.mode === 'demo' ? 'simulados' : 'USD'}
-            </span>
+            <span>{money(current.costNano)} USD</span>
             {['running', 'queued'].includes(current.status) && (
               <button className="button danger small-button" onClick={() => void stop()}>
                 <Square size={12} />
@@ -324,14 +275,51 @@ export function MissionDetail({ run, onClose }: { run: Run | null; onClose: () =
               <>
                 <div className="eyebrow">OBJETIVO</div>
                 <p>{current.prompt}</p>
-                <div className="eyebrow spaced">MEJOR CANDIDATO</div>
+                <div className="eyebrow spaced">RESULTADO</div>
                 {current.result ? (
                   <pre className="result-content">{current.result}</pre>
+                ) : current.error || !['queued', 'running'].includes(current.status) ? (
+                  <p>{current.error || 'Sin resultado.'}</p>
                 ) : (
                   <div className="waiting-state">
                     <Loader2 size={17} className="spin" />
                     Esperando el primer candidato…
                   </div>
+                )}
+                {current.artifacts?.map((id) => (
+                  <ArtifactPanel key={id} id={id} kind={current.charts?.[id]} />
+                ))}
+                {!!current.steps?.length && (
+                  <section className="workflow-view">
+                    <h3>Flujo de ejecución</h3>
+                    <div className="workflow-nodes">
+                      {current.steps.map((step, i) => (
+                        <button
+                          key={i}
+                          aria-pressed={selectedStep === i}
+                          onClick={() => setSelectedStep(i)}
+                        >
+                          {(
+                            {
+                              ingest: 'Ingesta',
+                              plan: 'Planificación',
+                              execute: 'Ejecución',
+                              memory: 'Memoria',
+                              tool: 'Herramienta',
+                              verify: 'Verificación',
+                              handoff: 'Asignación',
+                              review: 'Revisión'
+                            } as Record<string, string>
+                          )[step.role] || step.role}
+                        </button>
+                      ))}
+                    </div>
+                    {current.steps[selectedStep] && (
+                      <p>
+                        {current.steps[selectedStep].model} {current.steps[selectedStep].detail}
+                      </p>
+                    )}
+                  </section>
                 )}
                 {current.unknownUsage && (
                   <p className="error-text">
@@ -365,7 +353,7 @@ export function MissionDetail({ run, onClose }: { run: Run | null; onClose: () =
                   </div>
                 ))
               ) : (
-                <p className="muted">Esta misión de ejemplo no tiene eventos de ejecución.</p>
+                <p className="muted">Sin eventos registrados.</p>
               ))}
           </div>
         </>
@@ -381,16 +369,12 @@ export function Missions({ onNew, onSelect }: { onNew: () => void; onSelect: (ru
   const runs =
     snapshot?.runs.filter(
       (r) =>
-        (filter === 'all' || r.status === filter || (filter === 'live' && r.mode === 'live')) &&
+        (filter === 'all' || r.status === filter) &&
         r.title.toLowerCase().includes(query.toLowerCase())
     ) || []
   return (
     <>
-      <SectionTitle
-        eyebrow="DEL OBJETIVO AL RESULTADO"
-        title="Misiones"
-        subtitle="Cada problema, un equipo. Cada iteración, una nueva oportunidad."
-      >
+      <SectionTitle title="Misiones">
         <a className="button" href="/api/export" download>
           <ArrowDownToLine size={14} />
           Exportar
@@ -406,7 +390,7 @@ export function Missions({ onNew, onSelect }: { onNew: () => void; onSelect: (ru
             ['all', 'Todas'],
             ['running', 'En curso'],
             ['completed', 'Completadas'],
-            ['live', 'APIs reales']
+            ['failed', 'Con error']
           ].map(([id, title]) => (
             <button
               key={id}
@@ -434,15 +418,13 @@ export function Missions({ onNew, onSelect }: { onNew: () => void; onSelect: (ru
             <span>Coste USD</span>
             <span>Estado</span>
           </div>
-          {runs.map((run, i) => (
+          {runs.map((run) => (
             <button key={run.id} className="mission-row" onClick={() => onSelect(run)}>
               <div>
-                <span className="mission-index">{String(i + 1).padStart(2, '0')}</span>
                 <div>
                   <strong>{run.title}</strong>
                   <small>
-                    {shortDate(run.createdAt)} · {run.iterations.length} iteraciones ·{' '}
-                    {run.mode === 'demo' ? 'ejemplo' : 'API real'}
+                    {shortDate(run.createdAt)} · {run.iterations.length} iteraciones · {run.model}
                   </small>
                 </div>
               </div>
@@ -462,8 +444,7 @@ export function Missions({ onNew, onSelect }: { onNew: () => void; onSelect: (ru
         </div>
       ) : (
         <Empty
-          title="Espacio para el siguiente reto"
-          text="Crea una misión y sigue su progreso desde aquí."
+          title="Sin misiones"
           action={
             <button className="button primary" onClick={onNew}>
               Nueva misión

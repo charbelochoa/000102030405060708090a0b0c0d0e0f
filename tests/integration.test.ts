@@ -13,9 +13,11 @@ process.env.AERIS_WORKSPACE = root
 process.env.AERIS_DATA_DIR = join(root, '.aeris')
 process.env.AERIS_EMBEDDED = 'true'
 process.env.AERIS_AUTH_REQUIRED = 'false'
-process.env.AERIS_DEMO_DELAY = '2'
+
 for (const key of [
   'OPENAI_API_KEY',
+  'NVIDIA_API_KEY',
+  'AERIS_LOCAL_API_KEY',
   'ANTHROPIC_API_KEY',
   'GOOGLE_API_KEY',
   'XAI_API_KEY',
@@ -25,7 +27,6 @@ for (const key of [
 const { startServer } = await import('../server/index')
 const { data, cliToken, getKey, setKey } = await import('../server/store')
 const { safePath } = await import('../server/tools')
-const { evolution, optimize, rollback, gate, benchmarkPolicy } = await import('../server/evolution')
 const { savePage, backlinks, retrieveContext } = await import('../server/brain')
 const { server, port } = await startServer(0, '127.0.0.1')
 const base = `http://127.0.0.1:${port}/api`
@@ -120,30 +121,17 @@ test('credentials are encrypted and never returned in public settings', async ()
   setKey('openai', '')
 })
 
-test('demo is cancellable and completes with an explicit stop reason', async () => {
-  const created = (
-    await call('/runs', {
-      prompt: 'Verificar ciclo local',
-      mode: 'demo',
-      target: 70,
-      maxIterations: 8
-    })
-  ).value
-  let run = created
-  for (let i = 0; i < 40 && ['running', 'queued'].includes(run.status); i++) {
-    await delay(5)
-    run = (await call(`/runs/${created.id}`)).value
-  }
-  assert.equal(run.mode, 'demo')
-  assert.equal(run.status, 'completed')
-  assert.equal(run.stopReason, 'target')
-  assert.equal(run.iterations.length, 3)
-  assert.match(run.result, /No se ejecutaron modelos/)
-  const stopped = (await call('/runs', { prompt: 'Cancelar esta prueba', mode: 'demo' })).value
-  await call(`/runs/${stopped.id}/stop`, {})
-  assert.equal((await call(`/runs/${stopped.id}`)).value.stopReason, 'user')
+test('new workspaces are empty and reject retired demo sessions and runs', async () => {
+  assert.equal((await call('/snapshot')).value.runs.length, 0)
+  assert.deepEqual((await call('/context')).value.pages, [])
+  assert.equal(
+    (await call('/runs', { prompt: 'Prueba de regresión', mode: 'demo' })).response.status,
+    400
+  )
+  assert.equal((await call('/auth/demo', {})).response.status, 404)
+  const run = (await call('/runs', { prompt: 'Objetivo sin proveedor' })).value
+  assert.equal((await call('/runs/' + run.id)).value.status, 'failed')
 })
-
 test('independent authenticated accounts cannot read each other runs or control providers', async () => {
   const register = await call(
     '/auth/register',
@@ -200,32 +188,6 @@ test('shared rooms preserve messages and SSE announces events', async () => {
   assert.match(new TextDecoder().decode(next.value), /atlas/)
   signal.abort()
   assert.equal((await call('/messages?room=team')).value[0].to, 'nova')
-})
-
-test('optimization automatically creates a candidate, validates independently and supports rollback', () => {
-  const state = evolution()
-  const before = structuredClone(state.versions[0])
-  const result = optimize('local')
-  assert.equal(result.status, 'accepted')
-  assert.ok(result.candidate.quality > result.stable.quality)
-  assert.equal(result.development.split, 'dev')
-  assert.equal(result.candidate.split, 'validation')
-  assert.equal(result.candidate.datasetHash, result.stable.datasetHash)
-  assert.notEqual(result.development.datasetHash, result.candidate.datasetHash)
-  assert.deepEqual(state.versions[0], before)
-  assert.equal(
-    state.reports.some((r) => r.split === 'test'),
-    false
-  )
-  assert.equal(optimize('local').status, 'rejected')
-  rollback('local', 'v1')
-  assert.equal(state.stable, 'v1')
-  assert.equal(gate(result.candidate, { ...result.candidate, quality: 10 }).accepted, false)
-  assert.equal(gate(result.stable, { ...result.candidate, criticalErrors: 1 }).accepted, false)
-  assert.equal(
-    gate(result.stable, { ...result.candidate, datasetHash: 'different' }).accepted,
-    false
-  )
 })
 
 test('context graph supports backlinks, relevance budgets and owner isolation', () => {
@@ -391,7 +353,254 @@ test('CLI benchmark policy version does not collide with the application version
   const report = JSON.parse(benchmark.stdout)
   assert.equal(report.versionId, 'v1')
   assert.equal(report.split, 'dev')
-  assert.equal(report.count, 20)
+  assert.equal(report.count, 0)
   const version = await execute(process.execPath, ['--import', 'tsx', cli, '--version'], options)
-  assert.equal(version.stdout.trim(), '0.1.0')
+  assert.equal(version.stdout.trim(), '1.0.0')
+})
+
+test('análisis tabular completo, procedencia y protección de divisas', async () => {
+  const file = {
+    name: 'volumen.csv',
+    type: 'text/csv',
+    data: Buffer.from(
+      'grupo,valor,moneda\n' +
+        Array.from({ length: 50000 }, (_, i) => 'A,' + (i === 49999 ? 17 : 1) + ',MXN').join('\n')
+    ).toString('base64')
+  }
+  const response = await call('/lab/analyze', {
+    file,
+    plan: { aggregation: 'sum', metric: 'valor', group_by: 'grupo' }
+  })
+  assert.equal(response.response.status, 200, JSON.stringify(response.value))
+  assert.equal(response.value.rowsTotal, 50000)
+  assert.deepEqual(response.value.points, [{ label: 'A', value: '50016', rows: 50000 }])
+  assert.equal(response.value.verified, true)
+  assert.match(response.value.sha256, /^[a-f0-9]{64}$/)
+  const svg = await fetch(base + '/lab/artifacts/' + response.value.id + '/chart.svg', { headers })
+  assert.equal(svg.status, 200)
+  assert.match(await svg.text(), /50016/)
+  const denied = await fetch(base + '/lab/artifacts/' + response.value.id, { headers: {} })
+  assert.equal(denied.status, 401)
+  const mixed = { ...file, data: Buffer.from('valor,moneda\n4,MXN\n2,USD').toString('base64') }
+  assert.equal(
+    (await call('/lab/analyze', { file: mixed, plan: { aggregation: 'sum', metric: 'valor' } }))
+      .response.status,
+    422
+  )
+})
+test('el consolidador usa únicamente evidencias verificadas e independientes', async () => {
+  const { addCase, propose, recall, decide, study, evaluate } = await import('../server/study')
+  const { inspect } = await import('../server/analysis')
+  const owner = 'study-test',
+    prompt = 'Cuenta las filas.',
+    plan = { aggregation: 'count' as const }
+  const make = (rows: string) => ({
+    name: 'tabla.csv',
+    type: 'text/csv' as const,
+    data: Buffer.from('columna\n' + rows).toString('base64')
+  })
+  const dev = {
+    prompt,
+    plan,
+    split: 'dev' as const,
+    file: make('a\nb'),
+    expected: [{ label: 'Total', value: '2' }]
+  }
+  await assert.rejects(addCase(owner, { ...dev, expected: [{ label: 'Total', value: '8' }] }))
+  await addCase(owner, dev)
+  await assert.rejects(
+    addCase(owner, { ...dev, plan: undefined, split: 'validation', file: make('b\na') })
+  )
+  const val = await addCase(owner, {
+    ...dev,
+    plan: undefined,
+    split: 'validation',
+    file: make('e\nf\ng'),
+    expected: [{ label: 'Total', value: '3' }]
+  })
+  const p = propose(owner)
+  assert.equal(recall(owner, prompt, await inspect(make('b\na'))), undefined)
+  const t = await evaluate(owner, val.id, 'adaptive', p.id, 0.1)
+  assert.equal(t.success, true)
+  assert.equal(t.recalled, true)
+  assert.equal(t.calls, 0)
+  assert.throws(() => decide(owner), /cuatro ramas/)
+  assert.equal(study(owner).active, 'v1')
+})
+test('recuperación documental acotada y unión con cobertura verificable', async () => {
+  const { joinTables, searchDocument } = await import('../server/analysis')
+  const f = (text: string, type = 'text/csv') => ({
+    name: 'archivo',
+    type,
+    data: Buffer.from(text).toString('base64')
+  })
+  const doc = await searchDocument(
+    'local',
+    f('encabezado\n' + 'texto '.repeat(2000) + 'cláusula financiación', 'text/plain'),
+    'financiación'
+  )
+  assert.ok(doc.hits.length && doc.hits.every((h) => h.text.length <= 1000))
+  assert.ok(doc.hits[0].offset > 0)
+  const left = f('id,v\na,1\nb,2'),
+    right = f('id,marca\na,Ford')
+  const joined = await joinTables(left, right, 'id', 'id')
+  assert.equal(joined.rowsTotal, 2)
+  assert.equal(joined.matched, 1)
+  await assert.rejects(joinTables(left, f('id,v\na,1\na,2'), 'id', 'id'), /única/)
+})
+
+test('una experiencia de misión exige una referencia independiente y conserva la traza', async () => {
+  const file = {
+    name: 'cuentas.csv',
+    type: 'text/csv',
+    data: Buffer.from('activo\nsi\nno\nsi').toString('base64')
+  }
+  const { value: a } = await call('/lab/analyze', { file, plan: { aggregation: 'count' } })
+  const uri = '/lab/artifacts/' + a.id + '/experience',
+    prompt = 'Contar registros del libro'
+  assert.equal(
+    (await call(uri, { prompt, expected: [{ label: 'Total', value: '4' }] })).response.status,
+    422
+  )
+  assert.equal(
+    (await call(uri, { prompt, expected: [{ label: 'Total', value: '3' }] })).response.status,
+    201
+  )
+  assert.equal(data.studies?.local.cases.at(-1)?.sourceRunId, a.runId)
+})
+
+test('las cifras de un modelo sin cálculo tabular no pasan la verificación', async () => {
+  const original = globalThis.fetch
+  setKey('openai', 'test-local-transport')
+  let attempts = 0
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('api.openai.com/')) return original(url, init)
+    attempts++
+    return Response.json({
+      model: 'gpt-5.4-mini',
+      choices: [{ message: { content: 'El total es 438.' } }],
+      usage: { prompt_tokens: 15, completion_tokens: 6 }
+    })
+  }
+  try {
+    const { value: r } = await call('/runs', {
+      model: 'gpt-5.4-mini',
+      prompt: 'Calcula el total',
+      attachments: [
+        {
+          name: 'ventas.csv',
+          type: 'text/csv',
+          data: Buffer.from('valor\n2\n5').toString('base64')
+        }
+      ]
+    })
+    let run = r
+    for (let i = 0; i < 50 && ['running', 'queued'].includes(run.status); i++) {
+      await delay(10)
+      run = (await call('/runs/' + r.id)).value
+    }
+    assert.equal(attempts, 2)
+    assert.equal(run.status, 'failed')
+    assert.equal(run.result, '')
+    assert.match(run.error, /cálculo verificable/)
+  } finally {
+    globalThis.fetch = original
+    setKey('openai', '')
+  }
+})
+
+test('el resultado cuantitativo se publica con los valores del artefacto', async () => {
+  const original = globalThis.fetch
+  setKey('openai', 'test-local-transport')
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('api.openai.com/')) return original(url, init)
+    const body = JSON.parse(String(init?.body))
+    const evidence = body.messages.some((m: { role: string }) => m.role === 'tool')
+    const message = evidence
+      ? { content: 'La suma es 438.' }
+      : {
+          tool_calls: [
+            {
+              id: 'suma',
+              type: 'function',
+              function: {
+                name: 'analyze_table',
+                arguments: JSON.stringify({
+                  file_index: 0,
+                  plan: { aggregation: 'sum', metric: 'valor' }
+                })
+              }
+            }
+          ]
+        }
+    return Response.json({
+      model: body.model,
+      choices: [{ message }],
+      usage: { prompt_tokens: 21, completion_tokens: 9 }
+    })
+  }
+  try {
+    const { value: created } = await call('/runs', {
+      model: 'gpt-5.4-mini',
+      prompt: 'Calcula la suma de valor',
+      attachments: [
+        {
+          name: 'ventas.csv',
+          type: 'text/csv',
+          data: Buffer.from('valor\n2\n5').toString('base64')
+        }
+      ]
+    })
+    let run = created
+    for (let i = 0; i < 150 && ['running', 'queued'].includes(run.status); i++) {
+      await delay(30)
+      run = (await call('/runs/' + created.id)).value
+    }
+    assert.equal(run.status, 'completed', run.error)
+    assert.equal(run.result, 'ventas.csv\nTotal · 7')
+    assert.equal(run.artifacts.length, 1)
+  } finally {
+    globalThis.fetch = original
+    setKey('openai', '')
+  }
+})
+
+test('una credencial asigna modelos distintos al plan, ejecución y revisión solicitada', async () => {
+  const original = globalThis.fetch
+  const roles: string[] = []
+  setKey('openai', 'test-local-transport')
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('api.openai.com/')) return original(url, init)
+    const request = JSON.parse(String(init?.body)),
+      role = request.model
+    roles.push(role)
+    const content =
+      role === 'gpt-5.4-nano'
+        ? JSON.stringify({ tier: 'medium', steps: ['Inspeccionar la implementación'] })
+        : role === 'gpt-5.4-mini'
+          ? 'Revisión de la implementación solicitada.'
+          : JSON.stringify({ score: 92, verdict: 'Revisado.', improvements: 'Ninguna.' })
+    return Response.json({
+      model: role,
+      choices: [{ message: { content } }],
+      usage: { prompt_tokens: 25, completion_tokens: 12 }
+    })
+  }
+  try {
+    const { value: created } = await call('/runs', {
+      prompt: 'Revisa el código de esta implementación.'
+    })
+    let run = created
+    for (let i = 0; i < 50 && ['running', 'queued'].includes(run.status); i++) {
+      await delay(10)
+      run = (await call('/runs/' + created.id)).value
+    }
+    assert.equal(run.status, 'completed', run.error)
+    assert.deepEqual(roles, ['gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'])
+    assert.equal(run.calls.length, 3)
+    assert.ok(run.calls.every((c: { state: string }) => c.state === 'reported'))
+  } finally {
+    globalThis.fetch = original
+    setKey('openai', '')
+  }
 })

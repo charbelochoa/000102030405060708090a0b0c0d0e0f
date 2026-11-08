@@ -11,7 +11,13 @@ export async function api<T = any>(
     credentials: 'same-origin',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(
+      path.startsWith('/lab/') ||
+        path.startsWith('/benchmarks') ||
+        path.startsWith('/evolution/cases')
+        ? 150000
+        : 15000
+    )
   })
   if (!response.headers.get('content-type')?.includes('application/json'))
     throw new Error('El motor todavía no está disponible. Reintentando la conexión.')

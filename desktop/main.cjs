@@ -12,6 +12,12 @@ else {
     fs.mkdirSync(root, { recursive: true })
     process.env.AERIS_WORKSPACE = process.env.AERIS_WORKSPACE || root
     process.env.AERIS_DATA_DIR = path.join(app.getPath('userData'), 'engine')
+    if (app.isPackaged)
+      process.env.AERIS_ANALYSIS_WORKER = path.join(
+        process.resourcesPath,
+        'analysis',
+        'aeris-analysis.exe'
+      )
     process.env.AERIS_STATIC_DIR = path.join(__dirname, '..', 'dist')
     process.env.AERIS_EMBEDDED = 'true'
     process.env.AERIS_PUBLIC_URL = 'http://127.0.0.1:4319'

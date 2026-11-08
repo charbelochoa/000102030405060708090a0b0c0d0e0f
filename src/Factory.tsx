@@ -20,13 +20,6 @@ const team = [
   { name: 'Orion', role: 'Contexto', x: 224, y: 366 },
   { name: 'Vega', role: 'Comunicación', x: 664, y: 366 }
 ]
-const previewMessages = [
-  'Nova, la primera versión está lista para revisar.',
-  'Revisé el resultado. Falta comprobar el caso límite.',
-  'Encontré la nota con el criterio de aceptación.',
-  'Atlas, ya tienes la revisión y el contexto en la sala.'
-]
-
 function stationForEvent(event?: AgentEvent) {
   if (event?.type === 'reviewing') return 1
   if (event?.type === 'context.retrieved' || event?.type === 'routing') return 2
@@ -77,8 +70,7 @@ function useStudio() {
       ? {
           text: message ? message.text : latest!.text,
           source: message ? `${message.from} → ${message.to}` : `Motor · ${team[speaking].role}`,
-          kind:
-            run?.mode === 'demo' ? 'Misión demo' : message ? 'Mensaje de sala' : 'Evento de misión',
+          kind: message ? 'Mensaje de sala' : 'Evento de misión',
           speaker: speaking
         }
       : null
@@ -314,7 +306,6 @@ export function StudioPreview({ onOpen }: { onOpen: () => void }) {
           {active.length ? activeLabel : 'En espera de una misión'}
         </div>
         <h2>Estudio de agentes</h2>
-        <p>Sigue la construcción, la revisión y los mensajes del equipo en directo.</p>
         <span className="studio-preview-link">
           Abrir el estudio <ArrowUpRight size={15} />
         </span>
@@ -329,34 +320,17 @@ export function StudioPreview({ onOpen }: { onOpen: () => void }) {
 export function Factory({ onNew }: { onNew: () => void }) {
   const { snapshot, active, activeLabel, working, speech, connected } = useStudio()
   const [moving, setMoving] = useState(true)
-  const [preview, setPreview] = useState(false)
   const [selected, setSelected] = useState(0)
-  const [phase, setPhase] = useState(0)
   const reduce = useReducedMotion()
-  useEffect(() => {
-    if (!preview || !moving || reduce) return
-    const interval = setInterval(() => setPhase((value) => (value + 1) % 4), 3400)
-    return () => clearInterval(interval)
-  }, [preview, moving, reduce])
-  const activity = preview ? team.map((_, i) => i === phase || i === (phase + 1) % 4) : working
-  const dialogue = preview
-    ? {
-        text: previewMessages[phase],
-        speaker: phase,
-        kind: 'Vista previa',
-        source: team[phase].name
-      }
-    : speech
+  const activity = working,
+    dialogue = speech
   const events = (snapshot?.events || [])
     .filter((event) => event.runId)
     .slice(-4)
     .reverse()
   return (
     <>
-      <SectionTitle
-        title="Estudio de agentes"
-        subtitle="Selecciona una estación para ver qué hace el agente."
-      >
+      <SectionTitle title="Estudio de agentes">
         <button
           className="button"
           onClick={() => setMoving((value) => !value)}
@@ -375,25 +349,8 @@ export function Factory({ onNew }: { onNew: () => void }) {
           <div className="studio-room-header">
             <span className="studio-room-live">
               <i />
-              {preview
-                ? 'Vista previa'
-                : !connected
-                  ? 'Conectando'
-                  : active.length
-                    ? activeLabel
-                    : 'Estaciones disponibles'}
+              {!connected ? 'Conectando' : active.length ? activeLabel : 'Estaciones disponibles'}
             </span>
-            <button
-              className={`studio-preview-toggle ${preview ? 'selected' : ''}`}
-              onClick={() => {
-                setPreview((value) => !value)
-                setPhase(0)
-              }}
-              aria-pressed={preview}
-            >
-              {preview ? <RotateCcw size={13} /> : <Play size={13} />}
-              {preview ? 'Volver al directo' : 'Previsualizar'}
-            </button>
           </div>
           <div className={`studio-stage ${moving ? '' : 'paused'}`}>
             <PixelStudio moving={moving && !reduce} working={activity} selected={selected} />
@@ -415,7 +372,7 @@ export function Factory({ onNew }: { onNew: () => void }) {
             {dialogue && (
               <div
                 className={`agent-speech speech-${dialogue.speaker}`}
-                aria-live={preview ? 'off' : 'polite'}
+                aria-live="polite"
                 title={dialogue.text}
               >
                 <span>
@@ -432,7 +389,7 @@ export function Factory({ onNew }: { onNew: () => void }) {
           <div className="studio-room-footer">
             <span>
               <Radio size={12} />
-              {preview ? 'Escena de ejemplo · sin consumo de tokens' : 'Actividad del espacio'}
+              Actividad del espacio
             </span>
             <span>{!moving ? 'Animación en pausa' : reduce ? 'Movimiento reducido' : ''}</span>
           </div>
@@ -448,21 +405,8 @@ export function Factory({ onNew }: { onNew: () => void }) {
           <p>{team[selected].role}</p>
           <span className="studio-person-state">
             <i />
-            {preview ? 'Previsualización' : activity[selected] ? 'Trabajando' : 'Disponible'}
+            {activity[selected] ? 'Trabajando' : 'Disponible'}
           </span>
-          <div className="studio-person-note">
-            <span>{preview ? 'DIÁLOGO DE EJEMPLO' : 'SU PAPEL EN EL EQUIPO'}</span>
-            <p>
-              {preview
-                ? previewMessages[selected]
-                : [
-                    'Da forma a una primera solución y la mejora con cada revisión.',
-                    'Evalúa las propuestas y señala los detalles que se pueden mejorar.',
-                    'Recupera las notas relevantes para trabajar con el contexto adecuado.',
-                    'Hace visible el intercambio de mensajes entre agentes.'
-                  ][selected]}
-            </p>
-          </div>
           <button className="button" onClick={onNew}>
             Crear una misión
             <ArrowRight size={14} />
@@ -503,11 +447,6 @@ export function Factory({ onNew }: { onNew: () => void }) {
                 <time>{shortTime(event.createdAt)}</time>
               </span>
               <p>{event.text}</p>
-              <span>
-                {snapshot?.runs.find((run) => run.id === event.runId)?.mode === 'demo'
-                  ? 'DEMO'
-                  : 'API'}
-              </span>
             </div>
           ))
         ) : (

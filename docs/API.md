@@ -7,7 +7,6 @@ La API vive en `/api`. El navegador usa cookies HttpOnly. La CLI usa `Authorizat
 | GET    | `/health`                        | Estado del motor                                                    |
 | GET    | `/snapshot`                      | Misiones, ledger, eventos, skills y configuración pública           |
 | POST   | `/auth/local`                    | Sesión local, solo loopback y sin autenticación pública obligatoria |
-| POST   | `/auth/demo`                     | Sesión de visitante de demostración                                 |
 | POST   | `/auth/register`                 | Registro con nombre, correo y contraseña                            |
 | POST   | `/auth/login`                    | Acceso por correo                                                   |
 | POST   | `/auth/logout`                   | Revocar sesión                                                      |
@@ -33,42 +32,27 @@ La API vive en `/api`. El navegador usa cookies HttpOnly. La CLI usa `Authorizat
 | POST   | `/context`                       | Guardar página con title, content, enabled e id opcional            |
 | GET    | `/context/backlinks?title=AERIS` | Referencias entrantes                                               |
 | POST   | `/context/retrieve`              | Recuperar contexto con query y maxTokens                            |
-| GET    | `/evolution`                     | Versiones, experimentos y reportes                                  |
-| POST   | `/optimizations`                 | Generar y validar un candidato local                                |
-| POST   | `/benchmarks`                    | Evaluar version y split                                             |
-| POST   | `/versions/:id/restore`          | Rollback a una versión aceptada                                     |
 
-Las rutas de archivos, proveedores, ajustes, skills y promoción de políticas requieren administrador. La sesión demo no puede crear misiones con APIs reales.
 
-## Crear una misión
+## Herramientas y evidencia
 
-```json
-{
-  "prompt": "Revisar el proyecto y resolver los errores de validación",
-  "model": "gpt-5.4-mini",
-  "reviewer": "claude-haiku-4-5",
-  "mode": "live",
-  "budget": 0.5,
-  "maxIterations": 8,
-  "target": 90,
-  "session": "equipo",
-  "attachments": []
-}
-```
+Todos los endpoints de esta tabla requieren sesión. Experimentos y cambios de versión requieren administrador, salvo lectura del estado.
 
-`auto` permite selección del router. `mode=demo` no ejecuta APIs ni archivos. Los adjuntos admiten hasta cinco elementos de 5 MB codificados en base64. Texto: txt, md, json y csv. Imágenes: PNG, JPEG y WebP, de acuerdo con la capacidad del modelo.
+| Método | Ruta | Entrada o salida |
+| --- | --- | --- |
+| POST | /lab/inspect | file, sheet opcional. Cobertura, columnas, hojas y limitaciones |
+| POST | /lab/search | file, query. Fragmentos y ubicación |
+| POST | /lab/analyze | file, plan, sheet opcional. Artefacto de la cuenta, asociado a una misión |
+| GET | /lab/artifacts/:id | Resultado completo con procedencia y comprobaciones |
+| POST | /lab/artifacts/:id/experience | Contrasta el artefacto de una misión con una respuesta de referencia independiente para desarrollo. Body con prompt y expected |
+| GET | /lab/artifacts/:id/chart.svg | kind bar o line y offset de grupos |
+| GET | /lab/vehicles | make y year. Respuesta oficial vPIC con origen y hora |
+| GET | /context/procedures | Procedimientos de la versión activa y casos de desarrollo que los respaldan |
+| GET | /evolution | Versiones, ensayos, mediciones y estado de cierre |
+| POST | /evolution/cases | prompt, file, split, expected, sheet opcional. Solo desarrollo admite plan de referencia |
+| POST | /optimizations | Propone una política a partir de desarrollo |
+| POST | /benchmarks | taskId, strategy, version y budget por caso |
+| POST | /evolution/decide | Aplica la puerta de promoción en validación |
+| POST | /versions/:id/restore | Restaura una versión validada antes del cierre |
 
-## Evolución
-
-`POST /optimizations` no recibe instrucciones ni comandos arbitrarios. El espacio de cambios está restringido por un esquema y la disponibilidad del inventario no se puede desactivar.
-
-```json
-{
-  "budgetInclusive": true,
-  "normalizeFuel": true,
-  "minimumSeats": true,
-  "onlyAvailable": true
-}
-```
-
-El reporte del benchmark determinista usa `inputTokens=null`, `outputTokens=null` y coste API cero porque no llama a modelos. La latencia sí se mide. Los experimentos conservan hipótesis, cambios, dictamen y rutas de artefactos locales.
+Los adjuntos de entrada usan name, type y data en base64. Una misión admite cinco archivos de hasta 5 MB. El motor devuelve errores de validación HTTP 400 y errores de ejecución HTTP 422. Una misión asíncrona que falla conserva el error recuperable en /runs/:id. La transcripción de la misión puede incluir datos de los archivos. Pertenece a la cuenta que ejecutó la misión.

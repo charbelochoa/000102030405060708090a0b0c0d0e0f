@@ -13,3 +13,5 @@
 - Validar candidatos en una partición independiente antes de promover políticas.
 - No consultar el test final para proponer mejoras.
 - Ejecutar `npm run check` y `npm run build` antes de entregar cambios.
+
+- Mostrar solo texto que identifique datos, explique una limitación relevante o permita al usuario actuar. Los espacios nuevos arrancan vacíos.

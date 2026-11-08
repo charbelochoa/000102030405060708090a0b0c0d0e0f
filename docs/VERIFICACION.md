@@ -1,56 +1,35 @@
-# Verificación de AERIS v0.1
+# Verificación de la versión 1.0
 
-El 6 de noviembre de 2026 se verificaron la versión inicial y el rediseño de la interfaz. El registro de la versión inicial corresponde al commit `0a04b68149654045b826d68f54913e9bfb44bde4`.
+## Ensayo con inferencia real
 
-## Interfaz monocromática
+Se ejecutó Qwen2.5 0.5B Instruct Q4_K_M con llama.cpp b12198 en CPU. Cada tarea pedía el total de registros de una tabla pública de NHTSA vPIC. Se contrastó la respuesta con el campo Count que entrega el servicio. Los ocho archivos corresponden a combinaciones distintas de fabricante y año. Todos comparten la pregunta y el esquema de columnas. El conjunto de prueba se abrió después de la promoción. [Mediciones, hashes y fuentes](medicion-vpic.json)
 
-Se probaron la web compilada a 1480 × 940 y la disposición móvil a 390 × 844. Se comprobó el cambio de tema, su persistencia después de recargar, la apertura de la isla y su cierre con Escape, el acceso al inspector, la selección de estaciones y la pausa de la previsualización. En la vista móvil del estudio y del panel, el ancho del contenido coincidió con los 383 px disponibles después de la barra de desplazamiento.
+| Partición y rama | Aciertos | Llamadas LLM | Tokens reportados | Cargo de API |
+| --- | ---: | ---: | ---: | ---: |
+| Desarrollo, router estático | 2/2 | 2 | 382 | USD 0 |
+| Validación, modelo fijo | 4/4 | 4 | 764 | USD 0 |
+| Validación, router estático sin memoria | 4/4 | 4 | 764 | USD 0 |
+| Validación, política inicial | 4/4 | 4 | 764 | USD 0 |
+| Validación, candidata con memoria | 4/4 | 0 | 0 | USD 0 |
+| Test reservado, router estático | 2/2 | 2 | 382 | USD 0 |
+| Test reservado, política promovida | 2/2 | 0 | 0 | USD 0 |
 
-En un espacio temporal, una misión de demostración generó eventos y mensajes entre constructor y revisor. La isla mostró tres de ocho iteraciones y el coste simulado. El estudio mostró los dos sentidos de la conversación con el remitente, el destinatario y la etiqueta de demostración.
+En las dos tareas de desarrollo el modelo eligió la operación de conteo. El consolidador guardó esa operación con sus dos casos de evidencia. En cada archivo posterior la política volvió a calcular el resultado con DuckDB. La media de latencia de validación fue 691 ms para el router estático y 432 ms para la candidata en esta máquina. La política aceptada fue `p-b6d7c01ddde3`.
 
-Pasaron `npm run check` con 16 pruebas y `npm run build`. Se compararon los seis recursos de la distribución web con sus copias empaquetadas en Electron, incluidos el JavaScript, el CSS y SF Pro. Los seis coincidieron byte por byte.
+La comparación principal incluyó 22 ejecuciones y 3 056 tokens. Una llamada anterior de calibración en desarrollo consumió otros 353 tokens y falló al pedir una agrupación mensual inválida. Se ajustaron las instrucciones antes de consolidar. Las 17 llamadas medidas del protocolo y su calibración sumaron 3 409 tokens. Las consultas manuales de ingeniería durante el ajuste quedan fuera de ese total. El protocolo incluye los consumos de desarrollo y validación y conserva los errores. La inferencia local tuvo cargo de API cero. El coste eléctrico y la amortización del equipo no se midieron.
 
-Se abrió `release/AERIS-0.1.0-Windows.exe` con un perfil de prueba. El motor respondió en `127.0.0.1:4319` y sirvió la página, la hoja de estilos, el JavaScript y la fuente con el mismo contenido que la compilación verificada. El portable actualizado pesa 114 811 548 bytes y su SHA-256 es `2AFDA8DE6A990D4E83CA2121217F69F87992C3AB8392AD2F0828E018A4CC072A`.
+En esta familia el sistema prescindió del planificador para operaciones conocidas y mantuvo la exactitud. La prueba utilizó un único LLM local. Quedan abiertas las comparaciones monetarias con servicios facturados, la transferencia a otras preguntas o esquemas y la mejora del propio optimizador. [Protocolo de reproducción](HACKATHON.md)
 
-## Comprobaciones de la versión inicial
+## Verificación del producto
 
-| Comprobación            | Resultado observado                                                                                        |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| TypeScript              | Sin errores                                                                                                |
-| Pruebas automáticas     | 16 aprobadas, cero fallos, cero omitidas                                                                   |
-| Build web y servidor    | Correcto                                                                                                   |
-| CLI compilada           | Estado, modelos, misión de demo, recuperación de contexto y selección de versión de benchmark correctos    |
-| Dos procesos CLI        | Mensajes atlas → nova y nova → atlas en sala qa-cli                                                        |
-| Worktree real           | Creación de rama aeris/verification y checkout correctos; limpieza posterior correcta                      |
-| Dashboard en escritorio | Interfaz, misiones y datos del motor visibles                                                              |
-| Diseño móvil            | A 390 px, ancho del documento 383 px y ancho del contenido 383 px; sin desbordamiento horizontal de página |
-| Context Brain           | Grafo de seis páginas y ocho enlaces, navegación de páginas y recuperación probados                        |
-| Recuperación de prueba  | Tres páginas, 501 tokens estimados dentro de un límite de 1 800                                            |
-| Evolución de prueba     | v1: 5/15 casos; v2: 15/15 casos de validación, cero errores críticos                                       |
-| Aplicación empaquetada  | Motor iniciado en 4319, health correcto y ruta /app con HTTP 200                                           |
-| Portable Windows        | Ejecutable lanzado directamente; motor responde ok=true, versión 0.1.0                                     |
-| Repositorio             | Código subido y rama main verificada en origin                                                             |
-| Secretos y referencias  | Datos locales, credenciales, fuentes locales y paquetes originales excluidos de Git                        |
-| Reglas de código        | Sin comentarios en el código propio y sin emojis en archivos de texto publicados                           |
+Pasaron las 22 pruebas automatizadas. Cubren contabilidad, presupuestos, permisos, aislamiento de cuentas, rechazo de los modos de ejemplo, mensajes, uso no reportado, recuperación de contexto con presupuesto, procesamiento completo de 50 000 filas, divisas mixtas, procedencia, unión de tablas, protección entre particiones y validación de experiencias desde una misión.
 
-## Binario de la versión inicial
+Los contratos de OpenAI y Anthropic se comprobaron con respuestas controladas. Una prueba distribuye planificación, ejecución y revisión entre tres modelos con una sola credencial. Otras dos someten una misión a cifras inventadas por el modelo. Cuando falta la evidencia, la misión falla. Cuando la evidencia existe, publica los valores calculados con el archivo. La inferencia real de la tabla anterior usó Qwen local. Las API comerciales quedan pendientes de comprobación con las credenciales de la organización.
 
-Archivo: `release/AERIS-0.1.0-Windows.exe`.
+El ensayo con datos públicos dispone de un espacio propio. La distribución abre vacías las misiones, las notas, las estadísticas de investigación y la mensajería de un espacio nuevo.
 
-SHA-256:
+## Escritorio Windows
 
-```text
-D144962CB6828E749654281D7735DB4736565E2CAABE10E9952A14F1849F53B3
-```
+La prueba del portable usa un perfil nuevo en Windows y el servidor incluido en el ejecutable. Desde la interfaz se abrió un Excel de Honda 2023 con 83 filas, se comprobó el conteo, se exportó la gráfica SVG y se vinculó el cálculo a una referencia independiente. La búsqueda documental localizó el pasaje en la página 2 del PDF y en el párrafo 2 del archivo Word. Los siete logotipos de Configuración cargaron correctamente. La interfaz de análisis también se comprobó a 390 píxeles de ancho.
 
-El portable no tiene firma comercial. Los artefactos binarios quedan en la computadora del usuario; no se incluyen en el historial Git.
-
-## Límites de esta verificación
-
-Las pruebas de proveedores usan respuestas controladas para verificar las herramientas, el formato de mensajes y la contabilidad por modelo. No se realizaron llamadas pagadas ni login real en Google o GitHub porque no se proporcionaron credenciales.
-
-El benchmark de evolución mide una política de filtros sobre datos sintéticos. La mejora 5/15 → 15/15 no es una evaluación de inteligencia general de modelos ni una medición sobre inventario real de una empresa. El test final no se utilizó para proponer la mejora.
-
-`npm audit --omit=dev` reportó cero vulnerabilidades. La auditoría completa reportó seis avisos moderados en la cadena de herramientas de empaquetado de desarrollo, originados por minimatch en @electron/universal. No corresponden a las dependencias del servidor de producción. La actualización de esa cadena queda registrada para mantenimiento.
-
-No se ha validado un despliegue público, un entorno Docker en ejecución, escalado distribuido ni metaoptimización. Las instrucciones del servidor y los contratos para continuar el proyecto están en la documentación.
+El portable local `AERIS-1.0.0-Windows.exe` es x64, pesa 137 085 220 bytes y se distribuye sin firma de editor. Su SHA-256 es `de7b7a3c7ce1855e02cde9c1d1196bcb6f5862c91ea11c1ec31fbe8d607720c8`.

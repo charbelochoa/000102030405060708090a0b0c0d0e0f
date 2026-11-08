@@ -7,9 +7,10 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
   const id = useId().replace(/:/g, '')
   const [hovered, setHovered] = useState<number | null>(null)
   const valid = runs.filter((r) => r.iterations.length)
-  const count = Math.max(2, ...valid.map((r) => r.iterations.length))
+  if (!valid.length) return <p className="empty-measurement">Sin evaluaciones del revisor.</p>
+  const count = Math.max(1, ...valid.map((r) => r.iterations.length))
   const points = Array.from({ length: count }, (_, index) => {
-    const values = valid.map((r) => r.iterations[Math.min(index, r.iterations.length - 1)].score)
+    const values = valid.filter((r) => r.iterations[index]).map((r) => r.iterations[index].score)
     return {
       index: index + 1,
       value: values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0
@@ -32,7 +33,7 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
     .y0(height - 35)
     .y1((d) => y(d.value))
     .curve(curveMonotoneX)
-  const active = hovered === null ? points.at(-1)! : points[hovered]
+  const active = hovered === null ? points.at(-1)! : points[Math.min(hovered, points.length - 1)]
   const target = valid.length ? valid.reduce((s, r) => s + r.target, 0) / valid.length : 90
   return (
     <div className="improvement-chart">

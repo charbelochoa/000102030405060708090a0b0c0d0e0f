@@ -27,11 +27,10 @@ export function DynamicIsland({
   )[0]
   const run = active[0] || latest
   const event = [...(snapshot?.events || [])].reverse().find((item) => item.runId === run?.id)
-  const demo = active.length > 0 && active.every((item) => item.mode === 'demo')
   const status = !connected
     ? 'Conectando con tu espacio'
     : active.length
-      ? `${active.length} ${active.length === 1 ? 'misión' : 'misiones'}${demo ? ' demo' : ''} en curso`
+      ? `${active.length} ${active.length === 1 ? 'misión' : 'misiones'} en curso`
       : 'Tu equipo está listo'
   useEffect(() => {
     if (!open) return
@@ -108,9 +107,8 @@ export function DynamicIsland({
                       {active.length ? 'ACTIVIDAD EN CURSO' : 'ÚLTIMA ACTIVIDAD'}
                       <ArrowUpRight size={11} />
                     </button>
-                    {run && <span>{run.mode === 'demo' ? 'DEMO' : 'API'}</span>}
                   </div>
-                  <h2>{run?.title || 'El siguiente paso empieza contigo.'}</h2>
+                  <h2>{run?.title || 'Sin actividad'}</h2>
                   {event && event.type !== 'finished' && <p>{event.text}</p>}
                   {run && (
                     <div className="island-metrics">
@@ -123,19 +121,11 @@ export function DynamicIsland({
                       </span>
                       <span>
                         <strong>{formatTokens(run.usage.input + run.usage.output)}</strong>
-                        {run.unknownUsage
-                          ? 'Tokens parciales'
-                          : run.mode === 'demo'
-                            ? 'Tokens de ejemplo'
-                            : 'Tokens'}
+                        {run.unknownUsage ? 'Tokens parciales' : 'Tokens'}
                       </span>
                       <span>
                         <strong>{money(run.costNano, 4)}</strong>
-                        {run.unknownUsage
-                          ? 'USD parciales'
-                          : run.mode === 'demo'
-                            ? 'USD simulados'
-                            : 'USD contabilizados'}
+                        {run.unknownUsage ? 'USD parciales' : 'USD contabilizados'}
                       </span>
                     </div>
                   )}
@@ -146,7 +136,7 @@ export function DynamicIsland({
                         ? stopLabels[run.stopReason]
                         : active.length
                           ? 'Trabajo en curso'
-                          : 'Todo a tu ritmo'}
+                          : 'En espera'}
                     </span>
                     <button
                       onClick={() => {

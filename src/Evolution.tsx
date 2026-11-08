@@ -1,288 +1,267 @@
 import { useEffect, useState } from 'react'
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Check,
-  GitBranch,
-  History,
-  Loader2,
-  Play,
-  RotateCcw,
-  ShieldCheck,
-  X
-} from 'lucide-react'
-import type { EvolutionState, Experiment } from '../shared/evolution'
 import { api, useWorkspace } from './lib'
-import { Empty, Modal, SectionTitle } from './components'
-
-export function Evolution() {
-  const { notify, refresh } = useWorkspace()
-  const [state, setState] = useState<EvolutionState | null>(null)
-  const [busy, setBusy] = useState('')
-  const [selected, setSelected] = useState<Experiment | null>(null)
-  async function load() {
-    try {
-      setState(await api('/evolution'))
-    } catch (e) {
-      notify((e as Error).message, true)
-    }
-  }
+import { SectionTitle } from './components'
+import { money } from '../shared/catalog'
+import type { Trial, Study } from '../shared/analysis'
+type View = {
+  active: string
+  candidate?: string
+  sealed: boolean
+  cases: { id: string; source: string; split: string }[]
+  policies: { id: string; procedures: number }[]
+  experiments: Study['experiments']
+  trials: Trial[]
+}
+function Efficiency({ state }: { state: View }) {
+  const version = state.candidate || state.active
+  const pairs = state.cases
+    .filter((c) => c.split === 'validation')
+    .flatMap((c) => {
+      const t = state.trials.filter((t) => t.taskId === c.id),
+        on = t.findLast((t) => t.version === version && t.strategy === 'adaptive' && t.recalled),
+        off = t.findLast((t) => t.strategy === 'static' && t.configuration === on?.configuration)
+      return on && off ? [[off, on]] : []
+    })
+  const partial = pairs.some((pair) => pair.some((t) => !t.completeUsage))
+  return (
+    <section className="panel lab-panel">
+      <header>
+        <h2>Eficiencia de memoria</h2>
+        <span>{pairs.length} pares de validación</span>
+      </header>
+      {!pairs.length ? (
+        <p>Sin ejecuciones emparejadas con y sin memoria.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Memoria</th>
+              <th>Aciertos</th>
+              <th>Tokens{partial ? ' parciales' : ''}</th>
+              <th>USD{partial ? ' parciales' : ''}</th>
+              <th>Latencia media</th>
+            </tr>
+          </thead>
+          <tbody>
+            {['Sin memoria', 'Con memoria'].map((label, i) => (
+              <tr key={label}>
+                <td>{label}</td>
+                <td>
+                  {pairs.filter((p) => p[i].success).length}/{pairs.length}
+                </td>
+                <td>{pairs.reduce((n, p) => n + p[i].tokens, 0)}</td>
+                <td>
+                  {money(pairs.reduce((n, p) => n + BigInt(p[i].costNano), 0n).toString(), 6)}
+                </td>
+                <td>
+                  {Math.round(pairs.reduce((n, p) => n + p[i].latencyMs, 0) / pairs.length)} ms
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  )
+}
+export function MemoryEfficiency() {
+  const [state, setState] = useState<View>(),
+    [error, setError] = useState('')
   useEffect(() => {
-    void load()
+    api<View>('/evolution')
+      .then(setState)
+      .catch((e) => setError(e.message))
   }, [])
-  async function optimize() {
-    setBusy('optimize')
+  return state ? <Efficiency state={state} /> : <p role="status">{error}</p>
+}
+export function Evolution() {
+  const [state, setState] = useState<View>(),
+    [busy, setBusy] = useState(false)
+  const { notify } = useWorkspace()
+  const load = async () => setState(await api('/evolution'))
+  useEffect(() => {
+    load().catch((e) => notify(e.message, true))
+  }, [])
+  async function act(path: string, body: unknown = {}) {
+    setBusy(true)
     try {
-      const result = await api<Experiment>('/optimizations', {})
+      await api(path, body)
       await load()
-      await refresh()
-      setSelected(result)
-      notify(
-        `Candidato ${result.candidateVersion}: ${result.status === 'accepted' ? 'aceptado' : 'rechazado'}.`
-      )
     } catch (e) {
       notify((e as Error).message, true)
     } finally {
-      setBusy('')
-    }
-  }
-  async function restore(id: string) {
-    setBusy(id)
-    try {
-      await api(`/versions/${id}/restore`, {})
-      await load()
-      await refresh()
-      notify(`Restaurada la política ${id}.`)
-    } catch (e) {
-      notify((e as Error).message, true)
-    } finally {
-      setBusy('')
-    }
-  }
-  async function benchmark() {
-    setBusy('benchmark')
-    try {
-      const report = await api('/benchmarks', { version: state!.stable, split: 'validation' })
-      await load()
-      await refresh()
-      notify(`Validación: ${report.passed}/${report.count} casos correctos.`)
-    } catch (e) {
-      notify((e as Error).message, true)
-    } finally {
-      setBusy('')
+      setBusy(false)
     }
   }
   return (
     <>
-      <SectionTitle
-        eyebrow="MEJORAR TAMBIÉN TIENE UN MÉTODO"
-        title="Evolución del sistema"
-        subtitle="Políticas versionadas. Candidatos aislados. Cambios que se ganan su lugar."
-      >
-        <button className="button" onClick={() => void benchmark()} disabled={!!busy || !state}>
-          {busy === 'benchmark' ? <Loader2 size={14} className="spin" /> : <Play size={13} />}
-          Evaluar estable
+      <SectionTitle title="Evolución">
+        <button
+          className="button"
+          disabled={busy || !state?.cases.length || !!state.candidate || state.sealed}
+          onClick={() => void act('/optimizations')}
+        >
+          Consolidar experiencias
         </button>
-        <button className="button primary" onClick={() => void optimize()} disabled={!!busy}>
-          {busy === 'optimize' ? <Loader2 size={14} className="spin" /> : <GitBranch size={14} />}
-          Proponer mejora
-        </button>
+        {state?.candidate && (
+          <button
+            className="button primary"
+            disabled={busy}
+            onClick={() => void act('/evolution/decide')}
+          >
+            Evaluar promoción
+          </button>
+        )}
       </SectionTitle>
-      <div className="settings-intro panel">
-        <span className="section-icon">
-          <ShieldCheck size={18} />
-        </span>
-        <div>
-          <h2>De una hipótesis a una mejora verificable.</h2>
-          <p>
-            El optimizador analiza 20 casos de desarrollo de inventario sintético, genera
-            candidate.json y compara las políticas con 15 casos de validación independientes. Solo
-            promueve mejoras sin regresiones críticas. El conjunto final de 15 casos queda fuera de
-            la optimización.
-          </p>
-        </div>
-      </div>
-      <div className="evolution-summary">
-        <div className="panel">
-          <span>VERSIÓN ESTABLE</span>
-          <strong>{state?.stable || '—'}</strong>
-          <small>Política activa de inventario</small>
-        </div>
-        <div className="panel">
-          <span>EXPERIMENTOS</span>
-          <strong>{state?.experiments.length || 0}</strong>
-          <small>Incluye propuestas rechazadas</small>
-        </div>
-        <div className="panel">
-          <span>MEJORAS ACEPTADAS</span>
-          <strong>{state?.experiments.filter((e) => e.status === 'accepted').length || 0}</strong>
-          <small>Validación determinista</small>
-        </div>
-        <div className="panel">
-          <span>CONSUMO DE APIs</span>
-          <strong>$0.00</strong>
-          <small>Este benchmark no llama a LLMs</small>
-        </div>
-      </div>
-      <div className="evolution-columns">
-        <section className="panel">
-          <div className="panel-heading">
-            <h2>
-              <GitBranch size={14} />
-              Historial de versiones
-            </h2>
-            <span className="tiny-label">POLÍTICAS JSON</span>
-          </div>
-          <div className="version-list">
-            {state?.versions.map((v) => (
-              <div className={`version-item ${v.id === state.stable ? 'stable' : ''}`} key={v.id}>
-                <div className="version-node">{v.id}</div>
-                <div>
-                  <strong>
-                    {v.id === state.stable
-                      ? 'Versión estable'
-                      : v.parent
-                        ? `Candidata desde ${v.parent}`
-                        : 'Baseline inicial'}
-                  </strong>
-                  <p>{v.hypothesis}</p>
-                  <code>SHA256 {v.hash.slice(0, 16)}</code>
-                </div>
-                {v.id !== state.stable &&
-                  (v.id === 'v1' ||
-                    state.experiments.some(
-                      (e) => e.candidateVersion === v.id && e.status === 'accepted'
-                    )) && (
+      {state && (
+        <>
+          <section className="panel lab-panel">
+            <header>
+              <h2>Política activa</h2>
+              <code>{state.active}</code>
+            </header>
+            {state.policies.map((p) => (
+              <div className="event-line" key={p.id}>
+                <code>{p.id}</code>
+                <p>{p.procedures} procedimientos verificados</p>
+                {p.id !== state.active &&
+                  (p.id === 'v1' ||
+                    state.experiments.some((e) => e.accepted && e.candidate === p.id)) && (
                     <button
-                      className="icon-button"
-                      title={`Restaurar ${v.id}`}
-                      aria-label={`Restaurar ${v.id}`}
-                      onClick={() => void restore(v.id)}
-                      disabled={!!busy}
+                      disabled={busy || state.sealed || !!state.candidate}
+                      className="button"
+                      onClick={() => void act('/versions/' + p.id + '/restore')}
                     >
-                      <RotateCcw size={14} />
+                      Restaurar
                     </button>
                   )}
               </div>
             ))}
-          </div>
-        </section>
-        <section className="panel">
-          <div className="panel-heading">
-            <h2>
-              <History size={14} />
-              Memoria experimental
-            </h2>
-          </div>
-          {state?.experiments.length ? (
-            state.experiments.map((e) => (
-              <button className="experiment-item" key={e.id} onClick={() => setSelected(e)}>
-                <div>
-                  <span className={`experiment-status ${e.status}`}>
-                    {e.status === 'accepted' ? <Check size={12} /> : <X size={12} />}
-                    {e.status === 'accepted' ? 'ACEPTADA' : 'RECHAZADA'}
-                  </span>
-                  <span>
-                    {e.sourceVersion}
-                    <ArrowRight size={11} />
-                    {e.candidateVersion}
-                  </span>
+          </section>
+          <Efficiency state={state} />
+          <section className="panel lab-panel">
+            <header>
+              <h2>Casos de evaluación</h2>
+              <label className="button">
+                Importar JSON
+                <input
+                  hidden
+                  type="file"
+                  accept=".json"
+                  disabled={busy || !!state.candidate || state.sealed}
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0]
+                    e.target.value = ''
+                    if (f)
+                      try {
+                        await act('/evolution/cases', JSON.parse(await f.text()))
+                      } catch {
+                        notify('JSON inválido.', true)
+                      }
+                  }}
+                />
+              </label>
+            </header>
+            {state.cases.length ? (
+              state.cases.map((c) => (
+                <div className="event-line" key={c.id}>
+                  <strong>{c.source}</strong>
+                  <p>{c.split}</p>
+                  {c.split !== 'test' && (
+                    <button
+                      disabled={busy}
+                      className="button"
+                      onClick={async () => {
+                        setBusy(true)
+                        try {
+                          const branches =
+                            c.split === 'dev'
+                              ? [['static', 'v1']]
+                              : [
+                                  ['fixed', 'v1'],
+                                  ['static', 'v1'],
+                                  ['adaptive', state.active],
+                                  ...(state.candidate ? [['adaptive', state.candidate]] : [])
+                                ]
+                          for (const [strategy, version] of branches) {
+                            const t = await api<Trial>('/benchmarks', {
+                              taskId: c.id,
+                              strategy,
+                              version,
+                              budget: 0.1
+                            })
+                            if (t.error) throw new Error(t.error)
+                          }
+                          await load()
+                        } catch (e) {
+                          notify((e as Error).message, true)
+                          await load()
+                        } finally {
+                          setBusy(false)
+                        }
+                      }}
+                    >
+                      Medir · $0.10 máx./rama
+                    </button>
+                  )}
                 </div>
-                <p>{e.reason}</p>
-                <div>
-                  <strong>
-                    {e.stable.quality.toFixed(1)} %<ArrowRight size={14} />
-                    {e.candidate.quality.toFixed(1)} %
-                  </strong>
-                  <ArrowUpRight size={14} />
+              ))
+            ) : (
+              <p>Importa tareas con archivo y respuesta de referencia.</p>
+            )}
+          </section>
+          <section className="panel lab-panel">
+            <header>
+              <h2>Experimentos</h2>
+            </header>
+            {state.experiments.length ? (
+              state.experiments.map((e) => (
+                <div key={e.id}>
+                  <code>
+                    {e.parent} → {e.candidate}
+                  </code>
+                  <p>
+                    {e.accepted ? 'Aceptada' : 'Rechazada'} · {e.reason}
+                  </p>
                 </div>
-              </button>
-            ))
-          ) : (
-            <Empty
-              title="Toda mejora empieza con una pregunta"
-              text="Propón una mejora para generar y evaluar la primera política candidata."
-            />
-          )}
-        </section>
-      </div>
-      <section className="panel evolution-boundaries">
-        <div>
-          <h3>Qué cambia</h3>
-          <p>
-            El comportamiento de los filtros: presupuesto inclusivo, normalización de combustible y
-            plazas mínimas. Las políticas aceptadas se usan en la herramienta search_inventory.
-          </p>
-        </div>
-        <div>
-          <h3>Qué mide</h3>
-          <p>
-            Coincidencia exacta de resultados y disponibilidad. Se registran tiempos reales. Este
-            ensayo verifica políticas de software; no mide inteligencia general ni entrenamiento de
-            pesos.
-          </p>
-        </div>
-        <div>
-          <h3>Cuándo para</h3>
-          <p>
-            Una propuesta por experimento. Si no existe mejora, el candidato se rechaza y la
-            política estable permanece. Puedes restaurar cualquier versión previamente aceptada.
-          </p>
-        </div>
-      </section>
-      <Modal
-        open={!!selected}
-        onOpenChange={(value) => !value && setSelected(null)}
-        title={
-          selected ? `${selected.sourceVersion} → ${selected.candidateVersion}` : 'Experimento'
-        }
-        description="Evidencia del experimento local, sin llamadas a modelos."
-      >
-        {selected && (
-          <div className="experiment-detail">
-            <p>{selected.hypothesis}</p>
-            <div className="experiment-score">
-              <span>
-                Estable
-                <strong>
-                  {selected.stable.passed}/{selected.stable.count}
-                </strong>
-              </span>
-              <ArrowRight size={21} />
-              <span>
-                Candidata
-                <strong>
-                  {selected.candidate.passed}/{selected.candidate.count}
-                </strong>
-              </span>
-              <span>
-                Errores críticos<strong>{selected.candidate.criticalErrors}</strong>
-              </span>
-            </div>
-            <div className="eyebrow">CAMBIOS PROPUESTOS</div>
-            <pre>
-              {selected.changes.join('\n') || 'Sin cambios: no se encontraron fallos corregibles.'}
-            </pre>
-            <p className="experiment-verdict">{selected.reason}</p>
-            <div className="eyebrow">ARTEFACTOS LOCALES</div>
-            <code className="artifact-path">{selected.artifact}</code>
-            <div className="benchmark-cases">
-              {selected.candidate.rows.map((row) => (
-                <div key={row.taskId}>
-                  {row.success ? <Check size={12} /> : <X size={12} />}
-                  <span>{row.taskId}</span>
-                  <span>{row.category}</span>
-                  <span>{row.success ? 'Correcto' : 'Fallo'}</span>
-                </div>
-              ))}
-            </div>
-            <p className="view-footnote">
-              candidate.json, experiment.json y REPORT.md quedan guardados en la carpeta del
-              experimento. El optimizador no ejecutó el test final.
-            </p>
-          </div>
-        )}
-      </Modal>
+              ))
+            ) : (
+              <p>Sin decisiones de promoción.</p>
+            )}
+            {state.trials.length > 0 && (
+              <div className="lab-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Caso</th>
+                      <th>Rama</th>
+                      <th>Resultado</th>
+                      <th>Llamadas</th>
+                      <th>Tokens</th>
+                      <th>USD</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.trials.slice(-50).map((t) => (
+                      <tr key={t.runId}>
+                        <td>{t.taskId.slice(0, 8)}</td>
+                        <td>{t.strategy}</td>
+                        <td>{t.error || (t.success ? 'Correcto' : 'Incorrecto')}</td>
+                        <td>{t.calls}</td>
+                        <td>{t.tokens}</td>
+                        <td>
+                          {money(t.costNano, 6)}
+                          {!t.completeUsage ? ' parcial' : ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </>
   )
 }

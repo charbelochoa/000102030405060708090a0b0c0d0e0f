@@ -1,79 +1,25 @@
-# Arquitectura de AERIS
+# Arquitectura de ejecución
 
-## Decisiones
+React y Electron consumen la misma API Express que la CLI. TypeScript y Zod definen adjuntos, modelos, planes, artefactos y casos. Un espacio comparte administración de proveedores y políticas de acceso al sistema de archivos. Cada cuenta tiene sus propias misiones, mensajes, documentos y memoria. El servidor debe ejecutarse como un proceso único por volumen. El despliegue empresarial distribuido requiere almacenamiento transaccional, administración de organizaciones y controles operativos adicionales.
 
-El primer mensaje del usuario define producto, estilo y restricciones. El documento adicional de arquitectura es una referencia secundaria. Se conservó Node y TypeScript para compartir contratos, runtime y empaquetado entre web, CLI y Electron, sin introducir un segundo backend Python.
+## Flujo de una misión
 
-```mermaid
-flowchart TD
-  WEB[Web React] --> API[API Express]
-  CLI[CLI Commander] --> API
-  DESKTOP[Electron] --> API
-  API --> AUTH[Sesiones y permisos]
-  API --> ENGINE[Orquestador]
-  ENGINE --> ROUTER[Router híbrido]
-  ROUTER --> PROVIDERS[Adaptadores de modelos]
-  ENGINE --> TOOLS[Herramientas acotadas]
-  ENGINE --> CONTEXT[Context Brain]
-  CONTEXT --> DATALOG[DataScript y Markdown]
-  ENGINE --> REVIEW[Revisor LLM]
-  PROVIDERS --> LEDGER[Uso por llamada y tarifa conservada]
-  ENGINE --> EVENTS[Eventos SSE y mensajes por sala]
-  API --> EVOLUTION[Registro de políticas]
-  EVOLUTION --> DEV[Casos de desarrollo]
-  DEV --> CANDIDATE[Candidato JSON]
-  CANDIDATE --> VALIDATE[Validación independiente]
-  VALIDATE --> GATE[Promoción o rechazo]
-  GATE --> MEMORY[Memoria experimental y rollback]
-```
+1. Se registra el objetivo y se filtran los modelos disponibles por credencial, capacidad visual, activación y tarifa. El planificador designado, o un modelo ligero conectado, clasifica el objetivo y puede generar pasos. Una selección manual permite fijar el constructor.
+2. El constructor utiliza contratos de función. Puede consultar el espacio, leer documentos, buscar citas, agregar tablas, consultar NHTSA, unir tablas y enviar o recibir mensajes de la sala. Un revisor independiente puede recibir el candidato y devolver cambios. El registro conserva el modelo real, el solicitado, la tarifa histórica y el uso disponible. Una respuesta con uso ausente se registra como incompleta y detiene la misión.
+3. Las operaciones numéricas se ejecutan en un proceso Python separado con DuckDB sin acceso SQL externo. Un segundo cálculo decimal y un control de cobertura contrastan los resultados. Los CSV y hojas se recorren completos. La unión conserva todas las filas izquierdas y exige una clave derecha única. Los artefactos tienen identificador, hash, origen, hoja, plan y cobertura. El renderizador comparte la especificación entre web y CLI.
+4. El motor usa definiciones y programas instalados. La entrada selecciona operaciones de un catálogo cerrado. El proceso analítico carece de credenciales de proveedores. Su separación en un proceso con límites de entrada, concurrencia y tiempo no constituye una jaula de sistema operativo para contenido hostil.
+5. El inspector permite seleccionar cada paso registrado. El estudio y la isla visualizan eventos del servidor.
 
-## Módulos
+## Memoria
 
-| Módulo                 | Responsabilidad                                            |
-| ---------------------- | ---------------------------------------------------------- |
-| `shared/types.ts`      | Contratos de misión, uso, proveedor, skill y evento        |
-| `shared/catalog.ts`    | Proveedores, modelos y tarifas con fuente                  |
-| `server/index.ts`      | Transporte HTTP, esquemas de entrada y rutas               |
-| `server/auth.ts`       | Scrypt, sesiones con tokens hash, OAuth y administrador    |
-| `server/engine.ts`     | Construcción, herramientas, revisión, aceptación y límites |
-| `server/providers.ts`  | Formatos OpenAI-compatible y Anthropic Messages            |
-| `server/accounting.ts` | Normalización de uso y aritmética monetaria                |
-| `server/tools.ts`      | Archivos, búsqueda, Git y herramientas disponibles         |
-| `server/brain.ts`      | Páginas, backlinks y recuperación selectiva                |
-| `server/inventory.ts`  | Inventario sintético y cálculo de pagos                    |
-| `server/evolution.ts`  | Versiones inmutables, candidatos, gate y rollback          |
-| `server/store.ts`      | Persistencia local, cifrado y bus de eventos               |
+Las notas Markdown y los enlaces forman el cerebro de contexto. Los documentos adjuntos se consultan por fragmentos. El contexto personal y los mensajes se consideran datos. En los ensayos controlados el planificador recibe solo la pregunta y el esquema de columnas.
 
-## Context Brain
+El cerebro de optimización consolida operaciones que hayan producido la respuesta de referencia en desarrollo. Agrupa por pregunta normalizada, nombres y tipos de columnas y hoja. Cuando dos planes válidos discrepan para una misma llave, la consolidación se abstiene. Conserva los casos que respaldan cada regla. La política versionada almacena el procedimiento, nunca la respuesta de validación. Cada ejecución con memoria calcula de nuevo sobre el archivo actual. Una regresión, consumo incompleto, cambio de configuración o falta de mejora bloquea la promoción.
 
-Cada página pertenece a un propietario y se guarda en el estado persistido y como Markdown. Los enlaces se indexan como datoms en DataScript, la misma biblioteca de base de datos utilizada por Logseq. Las consultas Datalog resuelven backlinks; la recuperación léxica pondera título, etiquetas, bloques y relaciones explícitas.
+El diseño de lectura selectiva y consolidación se inspira en el artículo y el cuaderno de Anthropic revisados en `references/brain` y `references/code`. El cuaderno separa sesiones de origen, análisis y organización del almacén. AERIS usa un consolidador determinista con un evaluador externo al planificador. Los resultados publicados por Anthropic corresponden a sus experimentos. [The components of agent memory](https://www.anthropic.com/research/components-of-agent-memory)
 
-El presupuesto de contexto se calcula antes de ensamblar el prompt. Se registran IDs de páginas y tokens estimados para auditar qué contexto fue utilizado. El importe facturado sigue dependiendo del uso medido por el proveedor. No se guarda una memoria indiscriminada de toda la computadora.
+La investigación incorporada busca modificar un flujo de planificación dentro de componentes autorizados. Los pesos, la regla de promoción y el algoritmo que genera las propuestas permanecen fijos. Un procedimiento se reutiliza en preguntas y esquemas coincidentes. La evidencia de una familia de tareas no valida generalización semántica, metaoptimización ni reducciones de coste en otra API.
 
-## Ciclos de mejora
+## Marcos de referencia
 
-El ciclo de respuestas LLM propone, revisa y conserva el mejor candidato. El revisor evalúa con una rúbrica explícita y devuelve JSON validado. Este mecanismo es refinamiento iterativo y sus puntuaciones se identifican como evaluaciones del modelo.
-
-El ciclo de políticas opera sobre un espacio de configuración estricto. El optimizador determinista analiza fallos de desarrollo, propone un `WorkflowPolicy`, guarda su hash y evalúa con una partición diferente. La versión estable no cambia durante la evaluación. El gate exige mejora de exactitud y cero errores críticos. Una propuesta sin mejora se rechaza. El historial permite restaurar versiones aceptadas.
-
-El benchmark incluye 50 tareas sintéticas: 20 dev, 15 validation, 15 test. La optimización nunca llama a la función de test. El test final solo se ejecuta por petición explícita a la API o CLI. Esta separación evita usar sus resultados para proponer el candidato.
-
-## Contabilidad
-
-Cada respuesta conserva modelo solicitado, modelo efectivo reportado, uso, proveedor, tarifa, latencia y coste. La suma del ledger coincide con el coste de la misión e incluye clasificación, herramientas LLM y revisión. Las tarifas históricas no se sustituyen al editar el catálogo.
-
-Se calcula primero en picodólares enteros y se redondea a nanodólares por llamada. La salida incluye los tokens de razonamiento cuando el proveedor los incorpora; no se suman de nuevo. La creación y lectura de caché se facturan por separado cuando se reportan. Si falta uso completo, no se inventa una cifra y se detiene la misión.
-
-La reserva previa usa una estimación conservadora de entrada y el máximo de salida. Es un control de gasto local para las modalidades de texto e imágenes admitidas, no un límite transaccional impuesto en la cuenta del proveedor. Una cancelación de red puede dejar consumo pendiente de reporte y se marca como incompleto.
-
-## Persistencia y concurrencia
-
-Una sola instancia del servidor es la escritora del espacio. Las mutaciones se serializan en el proceso, se escriben a un temporal y se renombran, con copia previa. El bus mantiene cuatro misiones concurrentes y mensajes durables entre clientes. SSE distribuye eventos y la UI reconcilia el estado periódicamente para recuperarse de reinicios y proxies que agrupen los eventos.
-
-La persistencia JSON es apropiada para esta versión local. No equivale a una base transaccional multiworker. La migración prevista es SQLite con tablas de usuarios, runs, llamadas, notas, versiones y experimentos, conservando los contratos HTTP. Para despliegue distribuido posterior se requieren colas y límites por organización.
-
-## Confianza
-
-Documentos, archivos y notas son datos de tarea. No pueden ampliar permisos. Las herramientas comprueban rutas canónicas y rechazan secretos y enlaces simbólicos. La ejecución de shell arbitraria no está disponible al modelo. Las acciones de administración requieren el propietario local o la primera cuenta registrada que no sea demo.
-
-El inventario y los pagos son sintéticos. No hay conexión ni afiliación implícita con sistemas internos de una empresa. No se modifican pesos de modelos y no se ha demostrado metaoptimización del optimizador.
+`docs/frameworks.json` fija diez repositorios por SHA. `python scripts/references.py` obtiene el código en `references/frameworks`. MetaGPT, ChatDev, CrewAI y AOrchestra aportan referencias de roles y traspasos. Agents SDK y Microsoft Agent Framework aportan referencias de herramientas tipadas y flujos. AFlow y DSPy motivan la separación entre búsqueda y evaluación. LangGraph orienta el inspector de pasos y OpenCode la interacción con archivos y terminal. El runtime de AERIS conserva una sola implementación del registro de uso, permisos y ejecución.

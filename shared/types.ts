@@ -1,7 +1,15 @@
-export type ProviderId = 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek'
+export type ProviderId = 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'nvidia' | 'local'
 export type RunStatus = 'queued' | 'running' | 'completed' | 'stopped' | 'failed'
 export type StopReason =
-  'target' | 'budget' | 'iterations' | 'plateau' | 'user' | 'error' | 'recovered' | 'timeout'
+  | 'target'
+  | 'budget'
+  | 'iterations'
+  | 'plateau'
+  | 'user'
+  | 'error'
+  | 'recovered'
+  | 'timeout'
+  | 'delivered'
 export type Tier = 'low' | 'medium' | 'high' | 'reasoning'
 export interface Usage {
   input: number
@@ -67,7 +75,21 @@ export interface Run {
   model: string
   reviewer: string
   status: RunStatus
-  mode: 'demo' | 'live'
+  mode: 'live'
+  calls?: {
+    id: string
+    model: string
+    provider: ProviderId
+    actualModel?: string
+    startedAt: string
+    state: 'pending' | 'reported' | 'unknown'
+    latencyMs?: number
+    tariff: Model
+  }[]
+  charts?: Record<string, 'bar' | 'line'>
+  artifacts?: string[]
+  steps?: { role: string; model?: string; detail: string }[]
+  error?: string
   createdAt: string
   updatedAt: string
   iterations: Iteration[]

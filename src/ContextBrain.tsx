@@ -199,6 +199,15 @@ export function ContextBrain() {
   const { notify } = useWorkspace()
   const [pages, setPages] = useState<ContextPage[]>([])
   const [selectedId, setSelectedId] = useState('')
+  const [memory, setMemory] = useState<{
+    version: string
+    procedures: {
+      key: string
+      query: string
+      plan: unknown
+      evidence: { file: string; caseId: string; sha256: string }[]
+    }[]
+  }>()
   const [tab, setTab] = useState('graph')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState(false)
@@ -216,6 +225,7 @@ export function ContextBrain() {
     try {
       const data = await api<{ pages: ContextPage[] }>('/context')
       setPages(data.pages)
+      setMemory(await api('/context/procedures'))
       setSelectedId((previous) => id || previous || data.pages[0]?.id || '')
     } catch (e) {
       notify((e as Error).message, true)
@@ -312,11 +322,7 @@ export function ContextBrain() {
   }
   return (
     <>
-      <SectionTitle
-        eyebrow="RECUERDA LO NECESARIO. CONECTA LO IMPORTANTE."
-        title="Cerebro de contexto"
-        subtitle="Un grafo de conocimiento para dar a tus agentes el contexto justo."
-      >
+      <SectionTitle title="Cerebro de contexto">
         <label className="button brain-import">
           <FileUp size={13} />
           Importar Markdown
@@ -342,6 +348,9 @@ export function ContextBrain() {
           <button className={tab === 'page' ? 'active' : ''} onClick={() => setTab('page')}>
             <BookOpen size={13} />
             Página
+          </button>
+          <button className={tab === 'memory' ? 'active' : ''} onClick={() => setTab('memory')}>
+            Procedimientos
           </button>
         </div>
         <button
@@ -387,14 +396,6 @@ export function ContextBrain() {
                 <small>{p.links.length}</small>
               </button>
             ))}
-          <div className="brain-sidebar-footer">
-            <Network size={14} />
-            <span>
-              Local. Conectado.
-              <br />
-              Listo para recuperar.
-            </span>
-          </div>
         </aside>
         <div className="brain-main">
           {tab === 'graph' ? (
@@ -414,23 +415,32 @@ export function ContextBrain() {
                   setTab('page')
                 }}
               />
-              <div className="brain-explanation">
-                <div>
-                  <h3>Ideas que se encuentran.</h3>
-                  <p>
-                    Conecta páginas con <code>[[Nombre de página]]</code>. Los enlaces se vuelven
-                    contexto que tus agentes pueden recuperar.
-                  </p>
-                </div>
-                <div>
-                  <h3>Solo lo relevante.</h3>
-                  <p>
-                    La búsqueda selecciona bloques por coincidencia, etiquetas y enlaces. Hasta 1
-                    800 tokens estimados por consulta del agente.
-                  </p>
-                </div>
-              </div>
+              <p className="empty-measurement">
+                Enlaza notas con <code>[[Nombre de página]]</code>.
+              </p>
             </>
+          ) : tab === 'memory' ? (
+            <section className="lab-panel">
+              <header>
+                <h2>Procedimientos validados</h2>
+                <code>{memory?.version}</code>
+              </header>
+              {memory?.procedures.length ? (
+                memory.procedures.map((p) => (
+                  <details key={p.key}>
+                    <summary>{p.query}</summary>
+                    <pre>{JSON.stringify(p.plan, null, 2)}</pre>
+                    {p.evidence.map((e) => (
+                      <p key={e.caseId}>
+                        {e.file} · SHA256 {e.sha256}
+                      </p>
+                    ))}
+                  </details>
+                ))
+              ) : (
+                <p>Sin políticas promovidas con memoria.</p>
+              )}
+            </section>
           ) : selected ? (
             <>
               <div className="brain-header">

@@ -38,6 +38,8 @@ import { NewMission, MissionDetail, Missions } from './Missions'
 import { Factory } from './Factory'
 import { Configuration, Models, Skills } from './Configuration'
 import { Agents, Files, TerminalView } from './WorkspaceViews'
+import { Lab } from './Lab'
+import { PixelStudio } from './Factory'
 import { Evolution } from './Evolution'
 import { ContextBrain } from './ContextBrain'
 import { AppearanceSwitch } from './Appearance'
@@ -57,6 +59,7 @@ const navigation = [
   { id: 'files', label: 'Archivos', icon: FileCode2 },
   { id: 'skills', label: 'Skills', icon: Sparkles },
   { id: 'context', label: 'Cerebro de contexto', icon: GitBranch },
+  { id: 'lab', label: 'Análisis de archivos', icon: Activity },
   { id: 'router', label: 'Router de modelos', icon: Route },
   { id: 'providers', label: 'Proveedores y APIs', icon: KeyRound },
   { id: 'settings', label: 'Configuración', icon: Settings2 }
@@ -99,8 +102,12 @@ export function App() {
   }
   useEffect(() => {
     if (page !== 'app' || !snapshot || snapshot.user || starting.current) return
+    if (snapshot.auth.required) {
+      go('login')
+      return
+    }
     starting.current = true
-    api(snapshot.auth.required ? '/auth/demo' : '/auth/local', {})
+    api('/auth/local', {})
       .then(refresh)
       .catch((e) => {
         notify(e.message, true)
@@ -160,8 +167,8 @@ export function App() {
       {page === 'landing' ? (
         <Landing onEnter={() => go('app')} onLogin={() => go('login')} />
       ) : page === 'login' ? (
-        <Login onSuccess={() => go('app')} onBack={() => go('landing')} onDemo={() => go('app')} />
-      ) : !snapshot ? (
+        <Login onSuccess={() => go('app')} onBack={() => go('landing')} />
+      ) : !snapshot?.user ? (
         <div className="app-loading">
           <AerisMark />
           <span>Preparando tu espacio…</span>
@@ -180,7 +187,6 @@ export function App() {
             >
               <AerisMark />
               <span>AERIS</span>
-              <span className="brand-beta">BETA</span>
             </a>
             <button
               className="workspace-selector"
@@ -211,11 +217,10 @@ export function App() {
                   {item.id === 'missions' && active > 0 && (
                     <span className="nav-count">{active}</span>
                   )}
-                  {item.id === 'factory' && <span className="nav-new">NUEVO</span>}
                 </button>
               ))}
               <div className="nav-section-label second">HERRAMIENTAS</div>
-              {navigation.slice(6, 12).map((item) => (
+              {navigation.slice(6, -1).map((item) => (
                 <button
                   key={item.id}
                   className={`nav-item ${view === item.id ? 'active' : ''}`}
@@ -237,14 +242,6 @@ export function App() {
                   <i
                     className={`subtle-dot ${snapshot.settings.optimizer ? 'positive-dot' : ''}`}
                   />
-                </div>
-                <p>
-                  Mejores resultados.
-                  <br />
-                  Menos recursos.
-                </p>
-                <div className="optimizer-line">
-                  <i />
                 </div>
                 <span>
                   {money(actualCost)}
@@ -347,21 +344,7 @@ export function App() {
               </div>
             </header>
             <div className="app-content">
-              {view === 'metrics' && snapshot.runs.some((r) => r.mode === 'demo') && (
-                <div className="demo-banner">
-                  <span>
-                    <span className="demo-badge">DEMO</span>Este espacio incluye métricas de
-                    ejemplo.
-                    <span className="demo-banner-detail">
-                      Las métricas de ejemplo están identificadas y no generan cargos.
-                    </span>
-                  </span>
-                  <button onClick={() => navigate('providers')}>
-                    Conectar mis modelos
-                    <ArrowRight size={13} />
-                  </button>
-                </div>
-              )}
+              {view === 'lab' && <Lab />}
               {view === 'overview' && (
                 <Dashboard
                   onNew={() => setNewMission(true)}
@@ -389,7 +372,7 @@ export function App() {
               {view === 'providers' && <Models />}
               {view === 'context' && <ContextBrain />}
               {view === 'evolution' && <Evolution />}
-              {view === 'settings' && <Configuration />}
+              {view === 'settings' && <Configuration onProviders={() => navigate('providers')} />}
             </div>
           </main>
         </div>
@@ -493,8 +476,6 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
           <span>AERIS</span>
         </a>
         <nav>
-          <a href="#principios">El sistema</a>
-          <a href="#progreso">Progreso visible</a>
           <a href={repository} target="_blank" rel="noreferrer">
             Código abierto
             <ArrowUpRight size={12} />
@@ -513,22 +494,12 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
       </header>
       <main>
         <section className="landing-hero">
-          <div className="release-note">
-            <span>INTRODUCING AERIS</span>
-            <i />
-            Intelligence, in progress.
-            <ArrowUpRight size={12} />
-          </div>
           <h1>
-            Un buen equipo
+            Tu espacio de
             <br />
-            se vuelve <em>mejor.</em>
+            <em>agentes.</em>
           </h1>
-          <p>
-            Un espacio para agentes que resuelven, colaboran
-            <br className="desktop-break" /> y aprenden de cada resultado. Con cada recurso a la
-            vista.
-          </p>
+          <p>Analiza archivos, coordina modelos y verifica resultados.</p>
           <div className="hero-actions">
             <button className="button primary" onClick={onEnter}>
               Explorar AERIS
@@ -539,127 +510,9 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
               <ArrowRight size={14} />
             </button>
           </div>
-          <span className="hero-subnote">Tu terminal. Tu navegador. Tu escritorio.</span>
-          <div className="hero-workspace">
-            <div className="hero-window-bar">
-              <AerisMark small />
-              <span>AERIS / EL TRABAJO EVOLUCIONA</span>
-              <i />
-              <span>WORKSPACE 01</span>
-            </div>
-            <div className="hero-mini-sidebar">
-              <span className="mini-nav active">
-                <Boxes size={13} />
-                Vista general
-              </span>
-              <span className="mini-nav">
-                <Users size={13} />
-                Agentes
-              </span>
-              <span className="mini-nav">
-                <Activity size={13} />
-                Métricas
-              </span>
-              <span className="mini-nav">
-                <Terminal size={13} />
-                Terminal
-              </span>
-              <div>
-                <Zap size={13} />
-                Optimizador activo
-              </div>
-            </div>
-            <div className="hero-demo-main">
-              <span className="eyebrow">CADA ITERACIÓN CUENTA</span>
-              <h2>El siguiente paso es mejor.</h2>
-              <div className="hero-demo-stats">
-                <span>
-                  Calidad evaluada
-                  <strong>
-                    93.2<small>/100</small>
-                  </strong>
-                </span>
-                <span>
-                  Iteraciones
-                  <strong>
-                    07<small>de 08</small>
-                  </strong>
-                </span>
-                <span>
-                  Coste simulado<strong>$0.014</strong>
-                </span>
-              </div>
-              <svg viewBox="0 0 680 180" aria-label="Ilustración del progreso de evaluación">
-                <defs>
-                  <linearGradient id="hero-area" x1="0" x2="0" y1="0" y2="1">
-                    <stop stopColor="var(--tone-176)" stopOpacity=".18" />
-                    <stop offset="1" stopColor="var(--tone-176)" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                {[35, 85, 135].map((y) => (
-                  <path key={y} d={`M0 ${y}H680`} stroke="var(--tone-48)" strokeDasharray="3 5" />
-                ))}
-                <path
-                  d="M0 157C75 153 60 130 120 126S190 126 220 92 280 84 325 70 390 78 435 48 525 53 555 23 630 26 680 8V180H0Z"
-                  fill="url(#hero-area)"
-                />
-                <path
-                  d="M0 157C75 153 60 130 120 126S190 126 220 92 280 84 325 70 390 78 435 48 525 53 555 23 630 26 680 8"
-                  stroke="var(--tone-204)"
-                  strokeWidth="2"
-                  fill="none"
-                />
-                <circle cx="680" cy="8" r="4" fill="var(--tone-204)" />
-              </svg>
-              <div className="hero-demo-footer">
-                <span>
-                  <i className="subtle-dot positive-dot" />
-                  Objetivo alcanzado
-                </span>
-                <span>Demostración · sin consumo real</span>
-              </div>
-            </div>
+          <div className="landing-studio" id="principios">
+            <PixelStudio compact working={[false, false, false, false]} />
           </div>
-        </section>
-        <section className="landing-principles" id="principios">
-          <div>
-            <span className="eyebrow">DISEÑADO PARA HACER MÁS CON MENOS</span>
-            <h2>Inteligencia con criterio.</h2>
-          </div>
-          <article>
-            <GitBranch size={22} />
-            <h3>Juntos, llegan más lejos.</h3>
-            <p>
-              Agentes que comparten hallazgos, revisan su trabajo y se coordinan entre terminales.
-            </p>
-          </article>
-          <article>
-            <Activity size={22} />
-            <h3>Cada mejora tiene evidencia.</h3>
-            <p>
-              Construcción, evaluación y refinamiento. Una curva de progreso y una razón para
-              detenerse.
-            </p>
-          </article>
-          <article>
-            <Zap size={22} />
-            <h3>Cada token tiene un propósito.</h3>
-            <p>
-              El modelo adecuado, instrucciones compactas y presupuestos explícitos en cada misión.
-            </p>
-          </article>
-        </section>
-        <section className="landing-closing" id="progreso">
-          <span className="eyebrow">MENOS CAJA NEGRA. MÁS PERSPECTIVA.</span>
-          <h2>
-            No solo veas el resultado.
-            <br />
-            <span>Entiende cómo llegó hasta ahí.</span>
-          </h2>
-          <button className="button primary" onClick={onEnter}>
-            Abrir mi espacio
-            <ArrowUpRight size={15} />
-          </button>
         </section>
       </main>
       <footer className="landing-footer">
@@ -667,7 +520,7 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
           <AerisMark small />
           <span>AERIS</span>
         </a>
-        <span>Intelligence, in progress.</span>
+
         <a href={repository} target="_blank" rel="noreferrer">
           Construido en abierto
           <ArrowUpRight size={12} />
@@ -678,15 +531,7 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
   )
 }
 
-function Login({
-  onSuccess,
-  onBack,
-  onDemo
-}: {
-  onSuccess: () => void
-  onBack: () => void
-  onDemo: () => void
-}) {
+function Login({ onSuccess, onBack }: { onSuccess: () => void; onBack: () => void }) {
   const { snapshot, refresh, notify } = useEngine()
   const [registering, setRegistering] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -721,29 +566,16 @@ function Login({
         <AppearanceSwitch />
       </div>
       <div className="login-aside">
-        <span className="eyebrow">INTELLIGENCE, IN PROGRESS.</span>
-        <h1>
-          El siguiente gran paso
-          <br />
-          lo damos <em>en equipo.</em>
-        </h1>
         <div className="login-orbit">
           <div />
           <div />
           <div />
           <AerisMark />
         </div>
-        <p>Un espacio para construir, medir y evolucionar.</p>
       </div>
       <main className="login-main">
         <form onSubmit={submit}>
-          <span className="eyebrow">TU ESPACIO DE INTELIGENCIA</span>
-          <h2>{registering ? 'Empieza algo mejor.' : 'Bienvenido de vuelta.'}</h2>
-          <p>
-            {registering
-              ? 'Crea una cuenta personal o con el correo de tu empresa.'
-              : 'Retoma tus misiones. Tu equipo te está esperando.'}
-          </p>
+          <h2>{registering ? 'Crear cuenta' : 'Iniciar sesión'}</h2>
           <div className="oauth-buttons">
             <a
               className={`button ${snapshot?.auth.google ? '' : 'unavailable'}`}
@@ -834,15 +666,7 @@ function Login({
               {registering ? 'Iniciar sesión' : 'Crear cuenta'}
             </button>
           </div>
-          <button type="button" className="login-demo" onClick={onDemo}>
-            Explorar la demostración
-            <ArrowUpRight size={13} />
-          </button>
         </form>
-        <div className="login-bottom">
-          <Shield size={12} />
-          Tu espacio. Tus modelos. Tus decisiones.
-        </div>
       </main>
     </div>
   )

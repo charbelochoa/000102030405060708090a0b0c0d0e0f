@@ -32,7 +32,16 @@ export function ProviderMark({
       title={p.name}
       aria-label={p.name}
     >
-      {p.ascii}
+      <img
+        src={
+          '/providers/' +
+          (provider === 'google' ? 'gemini' : provider === 'local' ? 'qwen' : provider) +
+          '.svg'
+        }
+        alt=""
+        width={compact ? 16 : 25}
+        height={compact ? 16 : 25}
+      />
     </span>
   )
 }
@@ -119,23 +128,11 @@ export function Modal({
   )
 }
 
-export function SectionTitle({
-  eyebrow,
-  title,
-  subtitle,
-  children
-}: {
-  eyebrow?: string
-  title: string
-  subtitle?: string
-  children?: ReactNode
-}) {
+export function SectionTitle({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="page-heading">
       <div>
-        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h1>{title}</h1>
-        {subtitle && <p>{subtitle}</p>}
       </div>
       {children && <div className="heading-actions">{children}</div>}
     </div>
@@ -148,7 +145,7 @@ export function Empty({
   action
 }: {
   title: string
-  text: string
+  text?: string
   action?: ReactNode
 }) {
   return (
@@ -157,7 +154,7 @@ export function Empty({
         <AerisMark small />
       </div>
       <h3>{title}</h3>
-      <p>{text}</p>
+      {text && <p>{text}</p>}
       {action}
     </div>
   )
