@@ -7,7 +7,14 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Run, Snapshot } from '../shared/types'
-import { buildRsiTrace, rsiStages, type RsiTraceLine } from '../shared/phone'
+import type { ContextCycleRecord } from '../shared/brain'
+import {
+  buildRsiTrace,
+  renderAsciiPerformanceChart,
+  renderAsciiProgressBar,
+  rsiStages,
+  type RsiTraceLine
+} from '../shared/phone'
 import { chartSvg } from '../shared/chart'
 import { fileTypes } from '../shared/file-types'
 import { money, providers, stopLabels } from '../shared/catalog'
@@ -110,9 +117,15 @@ async function follow(id: string, quiet = false): Promise<Run> {
     const marker = `${run.status}-${run.iterations.length}`
     if (!quiet && marker !== last) {
       if (process.stdout.isTTY) process.stdout.write('\r\x1b[2K')
+      const bar = renderAsciiProgressBar(
+        run.iterations.length,
+        Math.max(1, run.maxIterations),
+        20,
+        'Ciclos RSI'
+      )
       print(
         chalk.gray(
-          `  ${run.status} · ${run.iterations.length} iteraciones · ${run.usage.input + run.usage.output} tokens · ${money(run.costNano)} USD`
+          `  ${bar} · ${run.status} · ${run.usage.input + run.usage.output} tokens · ${money(run.costNano)} USD`
         )
       )
       last = marker
@@ -120,6 +133,25 @@ async function follow(id: string, quiet = false): Promise<Run> {
     if (!['running', 'queued'].includes(run.status)) {
       if (!quiet) {
         print(chalk.green(`\n${stopLabels[run.stopReason || ''] || run.status}`))
+        if (run.iterations.length) {
+          print(
+            chalk.cyan(
+              '\n' +
+                renderAsciiPerformanceChart(
+                  run.iterations.map((it) => ({
+                    cycle: it.index,
+                    score: it.score,
+                    tokens: it.tokens,
+                    model: it.model,
+                    tier: it.tier,
+                    leaderDecision: it.leaderDecision
+                  })),
+                  7,
+                  7
+                )
+            )
+          )
+        }
         if (run.result || run.error) print(run.result || run.error)
       }
       return run
@@ -439,6 +471,56 @@ program
   .description('Páginas del cerebro de contexto')
   .action(async () => print(await request('/context')))
 program
+  .command('metrics')
+  .description('Gráfica ASCII de desempeño, linealidad y bitácora RSI en terminal')
+  .option('--run <id>', 'Filtrar por misión')
+  .action(async (options) => {
+    const [snapshot, ctx] = await Promise.all([
+      request<Snapshot>('/snapshot'),
+      request<{ reflections: ContextCycleRecord[]; requiredSpaces: string[] }>(
+        '/context/reflections'
+      )
+    ])
+    const reflections = options.run
+      ? ctx.reflections.filter((r) => r.runId === options.run || r.runId.startsWith(options.run))
+      : ctx.reflections
+    const points = reflections.length
+      ? reflections.map((r, i) => ({
+          cycle: i + 1,
+          score: r.score,
+          tokens: r.tokens,
+          model: r.model,
+          tier: r.tier,
+          leaderDecision: r.leaderDecision
+        }))
+      : snapshot.runs
+          .filter((r) => !options.run || r.id === options.run || r.id.startsWith(options.run))
+          .flatMap((r) =>
+            r.iterations.map((it) => ({
+              cycle: it.index,
+              score: it.score,
+              tokens: it.tokens,
+              model: it.model || r.model,
+              tier: it.tier,
+              leaderDecision: it.leaderDecision
+            }))
+          )
+    print(chalk.green(banner))
+    print(
+      chalk.cyan(
+        '\n' + renderAsciiPerformanceChart(points, points.length ? 7 : 1, 7)
+      )
+    )
+    if (reflections.length) {
+      print(chalk.yellow('\nBitácora RSI de errores y mejoras (Cerebro de contexto):'))
+      for (const r of reflections.slice(-10)) {
+        print(
+          `  [Ciclo ${r.cycle} · ${r.model} (${r.tier}) -> ${r.leaderDecision}] ${r.score}/100\n    Error: ${r.mistake}\n    Mejora: ${r.improvement}`
+        )
+      }
+    }
+  })
+program
   .command('recall')
   .argument('<query>')
   .option('--tokens <n>', 'Presupuesto de contexto estimado', '1800')
@@ -555,7 +637,25 @@ program
         }
         if (text === '/help') {
           print(
-            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
+            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /metrics · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
+          )
+          return
+        }
+        if (text === '/metrics') {
+          const ctx = await request<{ reflections: ContextCycleRecord[] }>('/context/reflections')
+          print(
+            renderAsciiPerformanceChart(
+              ctx.reflections.map((r, i) => ({
+                cycle: i + 1,
+                score: r.score,
+                tokens: r.tokens,
+                model: r.model,
+                tier: r.tier,
+                leaderDecision: r.leaderDecision
+              })),
+              ctx.reflections.length ? 7 : 1,
+              7
+            )
           )
           return
         }

@@ -78,6 +78,19 @@ export interface Iteration {
   verdict: string
   candidate: string
   accepted: boolean
+  model?: string
+  tier?: Tier
+  selfCheck?: string
+  mistake?: string
+  leaderDecision?: 'keep_small' | 'escalate_model' | 'spawn_subagent' | 'accept'
+  subagent?: {
+    role: string
+    tier: Tier
+    model?: string
+    iterations: number
+    reasoning: string
+    output?: string
+  }
 }
 export interface Run {
   coordination?: Coordination

@@ -28,8 +28,15 @@ import {
   Sparkles,
   X
 } from 'lucide-react'
-import type { ContextPage, ContextRetrieval } from '../shared/brain'
-import { api, useWorkspace } from './lib'
+import {
+  requiredContextSpaces,
+  type ContextCycleRecord,
+  type ContextPage,
+  type ContextRetrieval
+} from '../shared/brain'
+import { computePerformanceTrend, renderAsciiPerformanceChart } from '../shared/phone'
+import { ImprovementChart } from './Charts'
+import { api, shortTime, useWorkspace } from './lib'
 import { Empty, ExternalLink, Modal, SectionTitle, Toggle } from './components'
 
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -196,8 +203,10 @@ function ContextGraph({
 }
 
 export function ContextBrain() {
-  const { notify } = useWorkspace()
+  const { snapshot, notify } = useWorkspace()
   const [pages, setPages] = useState<ContextPage[]>([])
+  const [reflections, setReflections] = useState<ContextCycleRecord[]>([])
+  const [spaces, setSpaces] = useState<string[]>([...requiredContextSpaces])
   const [selectedId, setSelectedId] = useState('')
   const [memory, setMemory] = useState<{
     version: string
@@ -224,8 +233,14 @@ export function ContextBrain() {
     : []
   async function load(id?: string) {
     try {
-      const data = await api<{ pages: ContextPage[] }>('/context')
+      const data = await api<{
+        pages: ContextPage[]
+        reflections?: ContextCycleRecord[]
+        requiredSpaces?: string[]
+      }>('/context')
       setPages(data.pages)
+      setReflections(data.reflections || [])
+      if (data.requiredSpaces?.length) setSpaces(data.requiredSpaces)
       setMemory(await api('/context/procedures'))
       setSelectedId((previous) => id || previous || data.pages[0]?.id || '')
     } catch (e) {
@@ -353,6 +368,9 @@ export function ContextBrain() {
           <button className={tab === 'memory' ? 'active' : ''} onClick={() => setTab('memory')}>
             Procedimientos
           </button>
+          <button className={tab === 'rsi' ? 'active' : ''} onClick={() => setTab('rsi')}>
+            Errores y mejoras RSI ({reflections.length})
+          </button>
         </div>
         <button
           className="button small-button"
@@ -444,6 +462,110 @@ export function ContextBrain() {
                 ))
               ) : (
                 <p>Sin políticas promovidas con memoria.</p>
+              )}
+            </section>
+          ) : tab === 'rsi' ? (
+            <section className="lab-panel">
+              <header>
+                <h2>Bitácora RSI: dónde se equivocó el agente y qué hizo para mejorar</h2>
+                <code>{reflections.length} ciclos</code>
+              </header>
+              <p className="empty-measurement">
+                Espacios de consulta obligatoria antes de cada ciclo:{' '}
+                {spaces.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="button small-button"
+                    style={{ marginRight: 6, marginBottom: 6 }}
+                    onClick={async () => {
+                      const found = pages.find((p) => p.title.toLowerCase() === s.toLowerCase())
+                      if (found) {
+                        setSelectedId(found.id)
+                        setTab('page')
+                      } else {
+                        const created = await api<ContextPage>('/context', {
+                          title: s,
+                          content: `# ${s}\nEspacio obligatorio de consulta antes de ejecutar o escalar modelos. #bitacora-rsi #error-agente #mejora-ciclo`
+                        })
+                        await load(created.id)
+                        setTab('page')
+                      }
+                    }}
+                  >
+                    [[{s}]]
+                  </button>
+                ))}
+              </p>
+              <ImprovementChart runs={snapshot?.runs || []} />
+              {reflections.length > 0 && (
+                <pre className="mono" style={{ fontSize: 11, overflowX: 'auto', padding: 12 }}>
+                  {renderAsciiPerformanceChart(
+                    reflections.map((r, i) => ({
+                      cycle: i + 1,
+                      score: r.score,
+                      tokens: r.tokens,
+                      model: r.model,
+                      tier: r.tier,
+                      leaderDecision: r.leaderDecision
+                    })),
+                    7,
+                    7
+                  )}
+                </pre>
+              )}
+              <p className="empty-measurement">
+                {
+                  computePerformanceTrend(
+                    reflections.map((r, i) => ({
+                      cycle: i + 1,
+                      score: r.score,
+                      tokens: r.tokens
+                    }))
+                  ).summary
+                }
+              </p>
+              {reflections.length ? (
+                <table className="phone-table">
+                  <thead>
+                    <tr>
+                      <th>Ciclo</th>
+                      <th>Agente y modelo</th>
+                      <th>Autochequeo (¿Está bien o me equivoqué?)</th>
+                      <th>Dónde se equivocó</th>
+                      <th>Qué hizo para mejorar</th>
+                      <th>Decisión del líder</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...reflections].reverse().map((r) => (
+                      <tr key={r.id}>
+                        <td>
+                          <strong>C{r.cycle}</strong> · {r.runId.slice(0, 6)} ·{' '}
+                          {shortTime(r.createdAt)}
+                        </td>
+                        <td>
+                          {r.agent} · <code>{r.model}</code> ({r.tier}) · {r.score}/100
+                        </td>
+                        <td>{r.selfCheck}</td>
+                        <td>{r.mistake}</td>
+                        <td>{r.improvement}</td>
+                        <td>
+                          <code>{r.leaderDecision}</code>
+                          {r.nextModel ? ` -> ${r.nextModel}` : ''}
+                          {r.subagent
+                            ? ` · subagente ${r.subagent.role} (${r.subagent.tier}, ${r.subagent.iterations} it)`
+                            : ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p>
+                  Los registros aparecen automáticamente ciclo por ciclo cuando los agentes ejecutan
+                  misiones con revisión o equipo autónomo.
+                </p>
               )}
             </section>
           ) : selected ? (

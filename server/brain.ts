@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import d from 'datascript'
-import { pageTags, wikiLinks, type ContextPage, type ContextRetrieval } from '../shared/brain'
+import {
+  pageTags,
+  requiredContextSpaces,
+  wikiLinks,
+  type ContextCycleRecord,
+  type ContextPage,
+  type ContextRetrieval
+} from '../shared/brain'
 import { data, dataDir, event, save } from './store'
 
 const normalize = (s: string) =>
@@ -40,6 +47,77 @@ const terms = (s: string) =>
 
 export function listPages(owner: string) {
   return (data.contextPages || []).filter((p) => p.owner === owner).map((p) => ({ ...p }))
+}
+
+export function listCycleReflections(owner: string) {
+  return (data.cycleReflections || []).filter((r) => r.owner === owner).map((r) => ({ ...r }))
+}
+
+export function recordCycleReflection(
+  owner: string,
+  input: Omit<ContextCycleRecord, 'id' | 'owner' | 'createdAt'>
+): ContextCycleRecord {
+  const item: ContextCycleRecord = {
+    ...input,
+    id: randomUUID(),
+    owner,
+    createdAt: new Date().toISOString()
+  }
+  const list = (data.cycleReflections ||= [])
+  list.push(item)
+  if (list.length > 500) list.splice(0, list.length - 500)
+  const spaceTitle = requiredContextSpaces[0]
+  const existing = (data.contextPages || []).find(
+    (p) => p.owner === owner && normalize(p.title) === normalize(spaceTitle)
+  )
+  const block = [
+    `### Ciclo ${item.cycle} · Misión ${item.runId.slice(0, 8)} · ${item.agent} (${item.model} · ${item.tier})`,
+    `- Autochequeo: ${item.selfCheck}`,
+    `- Donde se equivoco: ${item.mistake}`,
+    `- Que hizo para mejorar: ${item.improvement}`,
+    `- Decision del lider (${item.reviewerModel}): ${item.leaderDecision}${item.nextModel ? ` -> ${item.nextModel}` : ''}${item.subagent ? ` · subagente ${item.subagent.role} (${item.subagent.tier}, ${item.subagent.iterations} iteraciones)` : ''}`,
+    `- Evaluacion del modelo: ${item.score}/100 · ${item.tokens} tokens`,
+    `- Referencias: [[${requiredContextSpaces[1]}]] [[${requiredContextSpaces[2]}]] #bitacora-rsi #error-agente #mejora-ciclo`
+  ].join('\n')
+  const previousBlocks = existing
+    ? existing.content
+        .split(/\n(?=### Ciclo )/)
+        .filter((b) => !b.startsWith('# '))
+        .slice(-19)
+    : []
+  const header = `# ${spaceTitle}\nEspacio obligatorio de consulta antes de ejecutar o escalar modelos. #bitacora-rsi #error-agente #mejora-ciclo\n`
+  savePage(owner, {
+    id: existing?.id,
+    title: spaceTitle,
+    content: [header, ...previousBlocks, block].join('\n\n'),
+    enabled: existing?.enabled ?? true
+  })
+  save()
+  event(
+    owner,
+    'rsi.context',
+    `Bitácora RSI ciclo ${item.cycle} (${item.model}): ${item.score}/100 · decisión ${item.leaderDecision}.`,
+    item.runId,
+    item
+  )
+  return item
+}
+
+export function retrieveMandatoryContext(
+  owner: string,
+  query: string,
+  maxTokens = 1800
+): ContextRetrieval {
+  const spaceLinks = requiredContextSpaces.map((s) => `[[${s}]]`).join(' ')
+  const result = retrieveContext(
+    owner,
+    `${query}\n${spaceLinks} #bitacora-rsi #error-agente #mejora-ciclo`,
+    maxTokens
+  )
+  return {
+    ...result,
+    spacesConsulted: [...requiredContextSpaces]
+  }
 }
 
 export function savePage(

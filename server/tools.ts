@@ -2,8 +2,10 @@ import { lstat, realpath, readdir, readFile, mkdir, writeFile, stat } from 'node
 import { resolve, relative, dirname, isAbsolute, sep, join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { workspace, dataDir, data, message } from './store'
+import { workspace, dataDir, data, event, message, publicSettings, save } from './store'
 import { evidenceDefinitions, evidenceTool } from './evidence-tools'
+import { requiredContextSpaces } from '../shared/brain'
+import { listPages, savePage } from './brain'
 import type { Run } from '../shared/types'
 
 const exec = promisify(execFile)
@@ -192,6 +194,42 @@ export const toolDefinitions = [
       properties: { command: { type: 'string', enum: ['status', 'diff', 'branches'] } },
       required: ['command']
     }
+  },
+  {
+    name: 'configure_runtime',
+    description:
+      'Update runtime orchestration settings (router, routerModel, optimizer, budget, maxIterations, target, or skill toggles) when writing is enabled.',
+    parameters: {
+      type: 'object',
+      properties: {
+        router: { type: 'boolean' },
+        routerModel: { type: 'string' },
+        optimizer: { type: 'boolean' },
+        budget: { type: 'number' },
+        maxIterations: { type: 'number' },
+        target: { type: 'number' },
+        enableSkills: { type: 'array', items: { type: 'string' } },
+        disableSkills: { type: 'array', items: { type: 'string' } },
+        reason: { type: 'string' }
+      }
+    }
+  },
+  {
+    name: 'record_rsi_lesson',
+    description:
+      'Record an agent mistake, improvement action, or orchestration rule in a mandatory Context Brain space.',
+    parameters: {
+      type: 'object',
+      properties: {
+        space: {
+          type: 'string',
+          enum: [...requiredContextSpaces]
+        },
+        mistake: { type: 'string' },
+        improvement: { type: 'string' }
+      },
+      required: ['mistake', 'improvement']
+    }
   }
 ]
 
@@ -207,7 +245,14 @@ export async function executeTool(
   if (evidenceDefinitions.some((t) => t.name === name) && run)
     return evidenceTool(name, args, run, signal)
   if (
-    ['list_files', 'read_file', 'search_files', 'write_file', 'run_check'].includes(name) &&
+    [
+      'list_files',
+      'read_file',
+      'search_files',
+      'write_file',
+      'run_check',
+      'configure_runtime'
+    ].includes(name) &&
     owner !== 'local' &&
     owner !== data.users[0]?.id
   )
@@ -217,6 +262,80 @@ export async function executeTool(
   if (name === 'search_files') return searchFiles(args.query, args.path || '.')
   if (name === 'write_file') return writeWorkspaceFile(args.path, args.content)
   if (name === 'run_check') return runCheck(args.command)
+  if (name === 'configure_runtime') {
+    if (!data.settings.allowWrites)
+      throw new Error('Activa la escritura en Configuración antes de modificar el runtime.')
+    if (typeof args.router === 'boolean') data.settings.router = args.router
+    if (
+      typeof args.routerModel === 'string' &&
+      data.settings.models.some((m) => m.id === args.routerModel)
+    )
+      data.settings.routerModel = args.routerModel
+    if (typeof args.optimizer === 'boolean') data.settings.optimizer = args.optimizer
+    if (typeof args.budget === 'number' && args.budget >= 0.001 && args.budget <= 100)
+      data.settings.budget = args.budget
+    if (
+      typeof args.maxIterations === 'number' &&
+      args.maxIterations >= 1 &&
+      args.maxIterations <= 20
+    )
+      data.settings.maxIterations = Math.round(args.maxIterations)
+    if (typeof args.target === 'number' && args.target >= 1 && args.target <= 100)
+      data.settings.target = args.target
+    for (const id of Array.isArray(args.enableSkills) ? args.enableSkills : []) {
+      const s = data.skills.find(
+        (x) => x.id === id || x.name.toLowerCase() === String(id).toLowerCase()
+      )
+      if (s) s.enabled = true
+    }
+    for (const id of Array.isArray(args.disableSkills) ? args.disableSkills : []) {
+      const s = data.skills.find(
+        (x) => x.id === id || x.name.toLowerCase() === String(id).toLowerCase()
+      )
+      if (s) s.enabled = false
+    }
+    save()
+    const spaceTitle = requiredContextSpaces[2]
+    const existing = listPages(owner).find(
+      (p) => p.title.toLowerCase() === spaceTitle.toLowerCase()
+    )
+    const note = `- [${new Date().toISOString()}] ${agent} ajustó runtime (${JSON.stringify(args)}). #reglas-orquestacion [[${requiredContextSpaces[0]}]]`
+    savePage(owner, {
+      id: existing?.id,
+      title: spaceTitle,
+      content: existing
+        ? `${existing.content}\n${note}`
+        : `# ${spaceTitle}\n${note}`,
+      enabled: true
+    })
+    event(
+      owner,
+      'settings',
+      `Orquestador (${agent}) actualizó configuración de runtime.`,
+      run?.id
+    )
+    return publicSettings()
+  }
+  if (name === 'record_rsi_lesson') {
+    const spaceTitle = requiredContextSpaces.includes(args.space)
+      ? (args.space as string)
+      : requiredContextSpaces[0]
+    const existing = listPages(owner).find(
+      (p) => p.title.toLowerCase() === spaceTitle.toLowerCase()
+    )
+    const entry = [
+      `### Registro de agente (${agent})`,
+      `- Donde se equivoco: ${String(args.mistake || '').slice(0, 600)}`,
+      `- Que hizo para mejorar: ${String(args.improvement || '').slice(0, 600)}`,
+      `- Enlaces: [[${requiredContextSpaces[0]}]] [[${requiredContextSpaces[1]}]] #bitacora-rsi #error-agente #mejora-ciclo`
+    ].join('\n')
+    return savePage(owner, {
+      id: existing?.id,
+      title: spaceTitle,
+      content: existing ? `${existing.content}\n\n${entry}` : `# ${spaceTitle}\n\n${entry}`,
+      enabled: true
+    })
+  }
   if (name === 'send_message') return message(owner, room, agent, args.to, args.text)
   if (name === 'read_messages')
     return data.messages.filter((m) => m.owner === owner && m.room === room).slice(-12)

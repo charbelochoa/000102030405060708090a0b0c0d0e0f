@@ -19,16 +19,40 @@ Documento técnico para el equipo y agentes colaboradores (Codex / Antigravity).
        - `07 Aprendizaje RSI`: entrega verificada al teléfono, calificación del caso y consolidación de la lección (`#atencion-cliente`) en el Cerebro de contexto (`[supervisor-rsi -> cerebro-contexto]`).
    - **Selector de Supervisor RSI e iteraciones**: permite elegir el modelo revisor (`auto`, `none` o modelo específico) y el número máximo de iteraciones del ciclo constructor-supervisor por cada mensaje del cliente.
 
-2. **CLI del sistema (`./aeris.cmd` / `cli/index.ts`) y Terminal Web (`/app#terminal`)**
-   - Nuevo comando `./aeris.cmd watch [--room <sala>]`: transmite en vivo en la terminal del sistema cada etapa del ciclo RSI, el diálogo entre agentes (`[de -> para]`) y el uso de herramientas.
-   - `follow(id)` en `./aeris.cmd run --wait` y `./aeris.cmd chat` ahora imprime línea por línea la traza de etapas `[RSI 01..07]` y los mensajes entre agentes en lugar de solo el resumen de estado.
-   - En `/app#terminal`, los comandos `/watch` y `/rsi` permiten monitorear en vivo todas las salas (incluidas las conversaciones `tel-*` del teléfono y equipos `team-*`).
+2. **Cerebro de contexto: Bitácora ciclo por ciclo de errores, mejoras y espacios obligatorios**
+   - **Espacios de consulta obligatoria (`requiredContextSpaces` en `shared/brain.ts`)**:
+     1. `[[Espacio de errores y mejoras RSI]]` (`#bitacora-rsi #error-agente #mejora-ciclo`)
+     2. `[[Lecciones de atención]]` (`#atencion-cliente`)
+     3. `[[Reglas de arquitectura y orquestación]]` (`#reglas-orquestacion`)
+   - Antes de cada ciclo, `retrieveMandatoryContext(owner, query, maxTokens)` consulta la pregunta junto con los tres espacios obligatorios y entrega los fragmentos relevantes dentro del presupuesto de tokens.
+   - Al cierre de cada ciclo revisado (tanto en modo `orchestrated` como `autonomous`), `recordCycleReflection` guarda un registro estructurado (`ContextCycleRecord`) y actualiza la página Markdown `Espacio de errores y mejoras RSI` con:
+     - Ciclo y misión (`runId`)
+     - Qué agente y modelo (`tier`: `low`, `medium`, `high`, `reasoning`) ejecutó el intento
+     - Autochequeo del agente (`¿Está bien o me equivoqué?`)
+     - Dónde se equivocó (`mistake`)
+     - Qué hizo / debe hacer para mejorar (`improvement`)
+     - Decisión del agente líder/revisor (`keep_small`, `escalate_model`, `spawn_subagent`, `accept`)
+   - En la interfaz web (`/app#context`), la nueva pestaña **Errores y mejoras RSI** muestra los botones de acceso directo a los espacios obligatorios, la gráfica de mejora y linealidad, y la tabla completa ciclo por ciclo.
 
-3. **Rama Git (`phone-test`)**
+3. **Escalado progresivo de modelos, autochequeo y creación de subagentes por el líder**
+   - Para no gastar tokens innecesarios en modelos grandes desde el inicio, los ciclos pueden arrancar en un modelo pequeño (`low`) con múltiples iteraciones, enviar reporte de autochequeo al líder (`high`/`reasoning`), y escalar progresivamente (`low` -> `medium` -> `high` -> `reasoning`) solo cuando el líder decide `escalate_model` en lugar de `keep_small`.
+   - Si el líder devuelve `leaderAction: "spawn_subagent"` con `{ role, tier, iterations, reasoning }`, `runSubagent` en `server/engine.ts` lanza el subagente con el nivel e iteraciones indicados, publica el diálogo en la sala compartida y entrega sus hallazgos al constructor para el siguiente ciclo.
+   - **Herramientas de runtime para el orquestador (`server/tools.ts`)**:
+     - `configure_runtime`: permite ajustar `router`, `routerModel`, `optimizer`, `budget`, `maxIterations`, `target` y activar/desactivar `skills` cuando `allowWrites` está habilitado, dejando constancia en `[[Reglas de arquitectura y orquestación]]`.
+     - `record_rsi_lesson`: permite registrar errores, mejoras o reglas directamente en los espacios obligatorios del Cerebro de contexto.
+
+4. **Gráficas de desempeño, linealidad ($R^2$) y barras de progreso (Terminal CLI y Web)**
+   - `computePerformanceTrend`, `renderAsciiProgressBar` y `renderAsciiPerformanceChart` en `shared/phone.ts` calculan la recta de regresión lineal ($y = mx + b$), pendiente por ciclo ($m$) y coeficiente de determinación ($R^2$) sobre las evaluaciones de cada ciclo, indicando explícitamente el tamaño de muestra y que las puntuaciones provienen del modelo revisor.
+   - **CLI del sistema (`./aeris.cmd` / `cli/index.ts`) y Terminal Web (`/app#terminal`)**:
+     - Nuevo comando `./aeris.cmd metrics [--run <id>]` y comando `/metrics` dentro de `aeris chat` y `/app#terminal` para graficar en ASCII la barra de progreso del pipeline RSI, la curva de desempeño (`*`) frente a la recta de regresión lineal (`.`) y la bitácora de errores y mejoras.
+     - Nuevo comando `./aeris.cmd watch [--room <sala>]` y `follow(id)` muestran en vivo la barra de progreso y la gráfica ASCII al finalizar misiones iterativas.
+   - **Gráfica SVG (`src/Charts.tsx`)**: `ImprovementChart` traza ahora la recta de regresión lineal y muestra en cabecera la pendiente ($\text{pts/ciclo}$) y linealidad ($R^2$).
+
+5. **Rama Git (`phone-test`)**
    - Rama remota: `https://github.com/charbelochoa/000102030405060708090a0b0c0d0e0f/tree/phone-test`
-   - Los archivos locales de `main` creados por otros procesos (`src/AgentCycle.tsx`, `docs/GCP.md`, `.github/workflows/pages.yml`, `server/realtime.ts`, etc.) se conservaron intactos.
+   - Incluye tanto el modo con orquestador (`orchestrated`) como el tablero de equipo autónomo (`autonomous` en `server/team.ts`, `src/TeamBoard.tsx` y `docs/EQUIPOS.md`).
 
-4. **Despliegue en servidor GCP (`136.118.8.128`)**
+6. **Despliegue en servidor GCP (`136.118.8.128`)**
    - **Directorio**: `/home/carlitosyt529/aeris-phone-test`
    - **Servicio systemd**: `aeris-phone-test.service` en `127.0.0.1:4330` (límite de 400 MB de RAM).
    - **Servicios coexistentes intactos**: `educatia-lab`, `educatia-portal` y `caddy` continúan operando sin cambios.
@@ -59,9 +83,12 @@ Documento técnico para el equipo y agentes colaboradores (Codex / Antigravity).
 # Ver en vivo en tu terminal cómo hablan los agentes y ejecutan el ciclo RSI:
 .\aeris.cmd watch
 
+# Graficar en la terminal la barra de progreso, desempeño, linealidad (R^2) y bitácora de errores/mejoras:
+.\aeris.cmd metrics
+
 # Filtrar una sala específica del teléfono en la CLI:
 .\aeris.cmd watch --room tel-ID_CONVERSACION
 
-# Iniciar chat interactivo en terminal:
+# Iniciar chat interactivo en terminal (incluye /metrics, /watch, /rsi):
 .\aeris.cmd chat --name atlas --room equipo
 ```

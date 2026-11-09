@@ -14,7 +14,13 @@ import {
   Terminal as TerminalIcon
 } from 'lucide-react'
 import { money, providers } from '../shared/catalog'
-import { buildRsiTrace, rsiStages } from '../shared/phone'
+import type { ContextCycleRecord } from '../shared/brain'
+import {
+  buildRsiTrace,
+  renderAsciiPerformanceChart,
+  renderAsciiProgressBar,
+  rsiStages
+} from '../shared/phone'
 import type { Run } from '../shared/types'
 import { api, formatTokens, shortTime, useWorkspace } from './lib'
 import { Empty, Modal, ProviderMark, SectionTitle, Status } from './components'
@@ -265,12 +271,40 @@ export function TerminalView() {
             text: rsiStages.map((s) => `[${s.id}] ${s.title} (${s.code})`).join('\n')
           }
         ])
+      } else if (text === '/metrics') {
+        const ctx = await api<{ reflections: ContextCycleRecord[] }>('/context/reflections')
+        const pts = ctx.reflections.length
+          ? ctx.reflections.map((r, i) => ({
+              cycle: i + 1,
+              score: r.score,
+              tokens: r.tokens,
+              model: r.model,
+              tier: r.tier,
+              leaderDecision: r.leaderDecision
+            }))
+          : (snapshot?.runs || []).flatMap((r) =>
+              r.iterations.map((it) => ({
+                cycle: it.index,
+                score: it.score,
+                tokens: it.tokens,
+                model: it.model || r.model,
+                tier: it.tier,
+                leaderDecision: it.leaderDecision
+              }))
+            )
+        setHistory((h) => [
+          ...h,
+          {
+            type: 'system',
+            text: renderAsciiPerformanceChart(pts, reachedStages.size, 7)
+          }
+        ])
       } else if (text === '/help')
         setHistory((h) => [
           ...h,
           {
             type: 'system',
-            text: '/help · /clear · /watch · /rsi · /model ID · /room NOMBRE\n/files [ruta] · /open archivo · /config · /worktree nombre\n/message DESTINO texto · /stop\nEscribe un objetivo para iniciar una misión.'
+            text: '/help · /clear · /watch · /rsi · /metrics · /model ID · /room NOMBRE\n/files [ruta] · /open archivo · /config · /worktree nombre\n/message DESTINO texto · /stop\nEscribe un objetivo para iniciar una misión.'
           }
         ])
       else if (text.startsWith('/model ')) setModel(text.slice(7).trim())
@@ -351,8 +385,31 @@ export function TerminalView() {
           </p>
           <p className="terminal-help">
             Escribe un objetivo para empezar o observa aquí el diálogo entre agentes. /help para
-            comandos.
+            comandos · /metrics para gráfica de desempeño y linealidad.
           </p>
+          <div className="terminal-line stage">
+            <span>#</span>
+            <pre>{renderAsciiProgressBar(reachedStages.size, 7, 28, 'Pipeline RSI')}</pre>
+          </div>
+          {run && run.iterations.length > 0 && (
+            <div className="terminal-line review">
+              <span>%</span>
+              <pre>
+                {renderAsciiPerformanceChart(
+                  run.iterations.map((it) => ({
+                    cycle: it.index,
+                    score: it.score,
+                    tokens: it.tokens,
+                    model: it.model || run.model,
+                    tier: it.tier,
+                    leaderDecision: it.leaderDecision
+                  })),
+                  reachedStages.size,
+                  7
+                )}
+              </pre>
+            </div>
+          )}
           {history.map((line, i) => (
             <div className={`terminal-line ${line.type}`} key={i}>
               <span>{line.type === 'user' ? '>' : line.type === 'error' ? '!' : '·'}</span>

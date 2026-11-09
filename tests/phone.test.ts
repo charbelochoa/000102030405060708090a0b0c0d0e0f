@@ -23,7 +23,9 @@ for (const key of [
   delete process.env[key]
 const { startServer } = await import('../server/index')
 const { cliToken, data } = await import('../server/store')
-const { groupByLessons, buildRsiTrace } = await import('../shared/phone')
+const { groupByLessons, buildRsiTrace, computePerformanceTrend, renderAsciiPerformanceChart } =
+  await import('../shared/phone')
+const { retrieveMandatoryContext } = await import('../server/brain')
 const { server, port } = await startServer(0, '127.0.0.1')
 const base = `http://127.0.0.1:${port}/api`
 const headers = { Authorization: `Bearer ${cliToken}`, 'Content-Type': 'application/json' }
@@ -42,7 +44,7 @@ after(async () => {
   )
   server.closeAllConnections()
   await new Promise<void>((done) => server.close(() => done()))
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
 })
 
 async function call(path: string, body?: unknown, auth = true) {
@@ -239,4 +241,92 @@ test('CLI RSI trace maps agent dialogue and all seven stages while excluding ext
     trace.map((l) => l.stage),
     ['01', '02', '03', '04', '05', '06', '07', '07']
   )
+})
+
+test('context brain records cycle mistakes and improvements and renders linear performance charts', async () => {
+  const c1 = await call('/context/reflections', {
+    runId: 'run-rsi-1',
+    cycle: 1,
+    coordination: 'orchestrated',
+    agent: 'constructor',
+    model: 'gpt-5.4-nano',
+    tier: 'low',
+    reviewerModel: 'gpt-5.4',
+    score: 62,
+    accepted: true,
+    selfCheck: 'Omití validar el número de pedido.',
+    mistake: 'Prometió reembolso sin verificar el pedido.',
+    improvement: 'Pedir siempre el identificador de pedido antes de confirmar.',
+    leaderDecision: 'keep_small',
+    nextModel: 'gpt-5.4-nano',
+    tokens: 180
+  })
+  assert.equal(c1.response.status, 201)
+  const c2 = await call('/context/reflections', {
+    runId: 'run-rsi-1',
+    cycle: 2,
+    coordination: 'orchestrated',
+    agent: 'constructor',
+    model: 'gpt-5.4-nano',
+    tier: 'low',
+    reviewerModel: 'gpt-5.4',
+    score: 78,
+    accepted: true,
+    selfCheck: 'Pedí el pedido pero faltó el plazo de devolución.',
+    mistake: 'No indicó la ventana de 30 días.',
+    improvement: 'Incluir plazo de 30 días y pasos de etiqueta.',
+    leaderDecision: 'escalate_model',
+    nextModel: 'gpt-5.4-mini',
+    tokens: 210
+  })
+  assert.equal(c2.response.status, 201)
+  const c3 = await call('/context/reflections', {
+    runId: 'run-rsi-1',
+    cycle: 3,
+    coordination: 'orchestrated',
+    agent: 'constructor',
+    model: 'gpt-5.4-mini',
+    tier: 'medium',
+    reviewerModel: 'gpt-5.4',
+    score: 94,
+    accepted: true,
+    selfCheck: 'Autochequeo validado con política completa.',
+    mistake: 'Sin error crítico en este ciclo.',
+    improvement: 'Conservar estructura verificada.',
+    leaderDecision: 'accept',
+    tokens: 240
+  })
+  assert.equal(c3.response.status, 201)
+  const ctx = await call('/context')
+  assert.equal(ctx.value.reflections.length, 3)
+  assert.equal(ctx.value.requiredSpaces.length, 3)
+  const retrieved = retrieveMandatoryContext('local', 'reembolso de pedido', 1200)
+  assert.ok(retrieved.hits.some((h) => h.title === 'Espacio de errores y mejoras RSI'))
+  const trend = computePerformanceTrend(
+    ctx.value.reflections.map((r: any, i: number) => ({
+      cycle: i + 1,
+      score: r.score,
+      tokens: r.tokens,
+      model: r.model,
+      tier: r.tier,
+      leaderDecision: r.leaderDecision
+    }))
+  )
+  assert.equal(trend.isLinearImprovement, true)
+  assert.equal(trend.slope, 16)
+  assert.ok(trend.rSquared > 0.99)
+  const ascii = renderAsciiPerformanceChart(
+    ctx.value.reflections.map((r: any, i: number) => ({
+      cycle: i + 1,
+      score: r.score,
+      tokens: r.tokens,
+      model: r.model,
+      tier: r.tier,
+      leaderDecision: r.leaderDecision
+    })),
+    7,
+    7
+  )
+  assert.match(ascii, /Pipeline RSI: \[#{28}\] 100% \(7\/7\)/)
+  assert.match(ascii, /mejora lineal consistente/)
 })

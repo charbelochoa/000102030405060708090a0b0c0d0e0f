@@ -226,3 +226,166 @@ export function groupByLessons(items: PhoneConversationView[]): PhoneGroup[] {
   }
   return [...groups.values()].sort((a, b) => a.lessons - b.lessons)
 }
+
+export interface PerformancePoint {
+  cycle: number
+  score: number
+  tokens?: number
+  model?: string
+  tier?: string
+  leaderDecision?: string
+}
+
+export interface PerformanceTrend {
+  count: number
+  slope: number
+  intercept: number
+  rSquared: number
+  isLinearImprovement: boolean
+  firstScore: number
+  lastScore: number
+  totalDelta: number
+  meanTokens: number
+  summary: string
+}
+
+export function computePerformanceTrend(points: PerformancePoint[]): PerformanceTrend {
+  const n = points.length
+  if (!n) {
+    return {
+      count: 0,
+      slope: 0,
+      intercept: 0,
+      rSquared: 0,
+      isLinearImprovement: false,
+      firstScore: 0,
+      lastScore: 0,
+      totalDelta: 0,
+      meanTokens: 0,
+      summary: 'Sin ciclos evaluados por revisor.'
+    }
+  }
+  const firstScore = points[0].score
+  const lastScore = points[n - 1].score
+  const totalDelta = lastScore - firstScore
+  const meanTokens = Math.round(
+    points.reduce((acc, p) => acc + (p.tokens || 0), 0) / Math.max(1, n)
+  )
+  if (n === 1) {
+    return {
+      count: 1,
+      slope: 0,
+      intercept: firstScore,
+      rSquared: 0,
+      isLinearImprovement: false,
+      firstScore,
+      lastScore,
+      totalDelta: 0,
+      meanTokens,
+      summary: `1 ciclo evaluado (${firstScore.toFixed(1)}/100). Se requieren al menos 2 ciclos para medir pendiente y linealidad.`
+    }
+  }
+  const xs = points.map((_, i) => i + 1)
+  const ys = points.map((p) => p.score)
+  const meanX = xs.reduce((a, b) => a + b, 0) / n
+  const meanY = ys.reduce((a, b) => a + b, 0) / n
+  let num = 0
+  let denX = 0
+  let denY = 0
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - meanX
+    const dy = ys[i] - meanY
+    num += dx * dy
+    denX += dx * dx
+    denY += dy * dy
+  }
+  const slope = denX > 0 ? num / denX : 0
+  const intercept = meanY - slope * meanX
+  const rSquared = denX > 0 && denY > 0 ? Math.max(0, Math.min(1, (num * num) / (denX * denY))) : 0
+  const isLinearImprovement = slope > 0.25 && rSquared >= 0.6
+  const sign = slope >= 0 ? '+' : ''
+  const linearityLabel =
+    slope > 0.25
+      ? rSquared >= 0.6
+        ? 'mejora lineal consistente'
+        : 'mejora positiva con varianza entre ciclos'
+      : slope < -0.25
+        ? 'descenso entre ciclos'
+        : 'estancamiento (meseta)'
+  return {
+    count: n,
+    slope,
+    intercept,
+    rSquared,
+    isLinearImprovement,
+    firstScore,
+    lastScore,
+    totalDelta,
+    meanTokens,
+    summary: `Tendencia (evaluación de modelo en ${n} ciclos): ${linearityLabel} · pendiente ${sign}${slope.toFixed(2)} pts/ciclo · R^2=${rSquared.toFixed(2)} · delta ${totalDelta >= 0 ? '+' : ''}${totalDelta.toFixed(1)} pts.`
+  }
+}
+
+export function renderAsciiProgressBar(
+  completed: number,
+  total: number,
+  width = 24,
+  label = 'Progreso RSI'
+): string {
+  const safeTotal = Math.max(1, total)
+  const clamped = Math.max(0, Math.min(safeTotal, completed))
+  const ratio = clamped / safeTotal
+  const filled = Math.round(ratio * width)
+  const bar = '#'.repeat(filled) + '-'.repeat(Math.max(0, width - filled))
+  const pct = Math.round(ratio * 100)
+  return `${label}: [${bar}] ${String(pct).padStart(3, ' ')}% (${clamped}/${safeTotal})`
+}
+
+export function renderAsciiPerformanceChart(
+  points: PerformancePoint[],
+  stageCompleted = 0,
+  stageTotal = 7
+): string {
+  const progress = renderAsciiProgressBar(stageCompleted, stageTotal, 28, 'Pipeline RSI')
+  if (!points.length) {
+    return `${progress}\nSin ciclos evaluados todavía para graficar desempeño.`
+  }
+  const trend = computePerformanceTrend(points)
+  const rows = 8
+  const cols = Math.min(points.length, 16)
+  const slice = points.slice(-cols)
+  const grid: string[][] = Array.from({ length: rows }, () => Array(cols * 4).fill(' '))
+  for (let i = 0; i < cols; i++) {
+    const x = i * 4 + 1
+    const actualY = Math.max(
+      0,
+      Math.min(rows - 1, rows - 1 - Math.round((slice[i].score / 100) * (rows - 1)))
+    )
+    const regScore = Math.max(
+      0,
+      Math.min(100, trend.intercept + trend.slope * (points.length - cols + i + 1))
+    )
+    const regY = Math.max(
+      0,
+      Math.min(rows - 1, rows - 1 - Math.round((regScore / 100) * (rows - 1)))
+    )
+    if (slice.length > 1) grid[regY][x] = '.'
+    grid[actualY][x] = '*'
+  }
+  const lines: string[] = [progress, trend.summary, '']
+  for (let r = 0; r < rows; r++) {
+    const tick = Math.round(100 - (r / (rows - 1)) * 100)
+    lines.push(`${String(tick).padStart(3, ' ')} | ${grid[r].join('')}`)
+  }
+  lines.push(`    +${'-'.repeat(cols * 4)}`)
+  lines.push(
+    `     ${slice.map((p) => `C${String(p.cycle).padEnd(3, ' ')}`).join('')}`
+  )
+  lines.push('     Leyenda: (*) evaluación del ciclo   (.) recta de regresión lineal')
+  for (const p of slice) {
+    lines.push(
+      `     C${p.cycle}: ${p.score.toFixed(1)}/100${p.model ? ` · ${p.model}` : ''}${p.tier ? ` (${p.tier})` : ''}${p.leaderDecision ? ` -> ${p.leaderDecision}` : ''}${p.tokens ? ` · ${p.tokens} tok` : ''}`
+    )
+  }
+  return lines.join('\n')
+}

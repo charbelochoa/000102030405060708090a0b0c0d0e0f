@@ -8,6 +8,8 @@ import { TeamBoard } from './TeamBoard'
 import {
   buildRsiTrace,
   groupByLessons,
+  renderAsciiPerformanceChart,
+  renderAsciiProgressBar,
   rsiStages,
   type PhoneConversationView
 } from '../shared/phone'
@@ -84,6 +86,20 @@ export function Phone() {
 
   const reachedStages = useMemo(() => new Set(trace.map((t) => t.stage)), [trace])
   const activeStage = trace.at(-1)?.stage
+  const perfPoints = useMemo(
+    () =>
+      (current?.turns || []).flatMap((t) =>
+        (t.iterations || []).map((it) => ({
+          cycle: it.index,
+          score: it.score,
+          tokens: it.tokens,
+          model: it.model || t.model,
+          tier: it.tier,
+          leaderDecision: it.leaderDecision
+        }))
+      ),
+    [current?.turns]
+  )
 
   useEffect(() => {
     screen.current?.scrollTo({ top: screen.current.scrollHeight, behavior: 'smooth' })
@@ -271,6 +287,22 @@ export function Phone() {
                 AERIS CLI · Traza multiagente y ciclo RSI en tiempo real
                 <span>{current ? `${current.turns.length} turnos` : 'sin sala activa'}</span>
               </p>
+              {current && (
+                <div className="terminal-line stage">
+                  <span>#</span>
+                  <pre>
+                    {renderAsciiProgressBar(reachedStages.size, 7, 24, 'Pipeline RSI')}
+                  </pre>
+                </div>
+              )}
+              {perfPoints.length > 0 && (
+                <div className="terminal-line review">
+                  <span>%</span>
+                  <pre>
+                    {renderAsciiPerformanceChart(perfPoints, reachedStages.size, 7)}
+                  </pre>
+                </div>
+              )}
               {!trace.length && (
                 <p className="terminal-help">
                   Envía un mensaje para observar el contexto recuperado, las llamadas a modelos, la
