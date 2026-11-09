@@ -1,0 +1,364 @@
+{
+  "protocol": "proposal-order-v1",
+  "provider": "local",
+  "sources": [
+    {
+      "split": "dev",
+      "make": "Honda",
+      "year": 2022,
+      "url": "https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/Honda/modelyear/2022?format=json",
+      "retrievedAt": "2026-11-08T16:08:40.049Z",
+      "rows": 81,
+      "sha256": "9c1e4af9875e930d3e8d24c9f4a663b09f8104f7973bf66d31e0aad484de3151"
+    },
+    {
+      "split": "validation",
+      "make": "Toyota",
+      "year": 2023,
+      "url": "https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/Toyota/modelyear/2023?format=json",
+      "retrievedAt": "2026-11-08T16:08:44.223Z",
+      "rows": 20,
+      "sha256": "cbb4494901e9ca5ee11b0f387eae6eb72bc129cbf1eee40bf182bf34c00d92c4"
+    },
+    {
+      "split": "test",
+      "make": "Ford",
+      "year": 2024,
+      "url": "https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/Ford/modelyear/2024?format=json",
+      "retrievedAt": "2026-11-08T16:08:45.524Z",
+      "rows": 49,
+      "sha256": "db481688eb55b7d67ba084d79625832f364cdf731f2242256f414ca2ea598d5d"
+    }
+  ],
+  "questions": [
+    "Count all rows in the supplied table. Return one overall total without grouping or filters.",
+    "Count all rows in this dataset. Return one overall total without grouping or filters.",
+    "Count all rows in the attached table. Return one overall total without grouping or filters.",
+    "Count all rows in this table. Return one overall total without grouping or filters."
+  ],
+  "arms": {
+    "static": {
+      "decisions": [
+        {
+          "accepted": false,
+          "operator": "count/filter",
+          "question": "Count all rows in the supplied table. Return one overall total without grouping or filters.",
+          "history": 0,
+          "regressions": 1,
+          "before": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 766,
+            "calls": 4,
+            "costNano": "0",
+            "latencyMs": 2936
+          },
+          "after": {
+            "cases": 4,
+            "correct": 3,
+            "tokens": 574,
+            "calls": 3,
+            "costNano": "0",
+            "latencyMs": 2675
+          }
+        },
+        {
+          "accepted": false,
+          "operator": "count/filter",
+          "question": "Count all rows in this dataset. Return one overall total without grouping or filters.",
+          "history": 0,
+          "regressions": 1,
+          "before": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 766,
+            "calls": 4,
+            "costNano": "0",
+            "latencyMs": 2936
+          },
+          "after": {
+            "cases": 4,
+            "correct": 3,
+            "tokens": 575,
+            "calls": 3,
+            "costNano": "0",
+            "latencyMs": 3285
+          }
+        },
+        {
+          "accepted": true,
+          "operator": "count",
+          "question": "Count all rows in the attached table. Return one overall total without grouping or filters.",
+          "history": 0,
+          "regressions": 0,
+          "before": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 766,
+            "calls": 4,
+            "costNano": "0",
+            "latencyMs": 2936
+          },
+          "after": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 574,
+            "calls": 3,
+            "costNano": "0",
+            "latencyMs": 3337
+          }
+        },
+        {
+          "accepted": true,
+          "operator": "count",
+          "question": "Count all rows in this table. Return one overall total without grouping or filters.",
+          "history": 0,
+          "regressions": 0,
+          "before": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 574,
+            "calls": 3,
+            "costNano": "0",
+            "latencyMs": 3337
+          },
+          "after": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 383,
+            "calls": 2,
+            "costNano": "0",
+            "latencyMs": 2776
+          }
+        }
+      ],
+      "attemptsToFirstPromotion": 3,
+      "final": [
+        {
+          "strategy": "static",
+          "correct": true,
+          "tokens": 192,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "adaptive",
+          "correct": true,
+          "tokens": 192,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "static",
+          "correct": true,
+          "tokens": 191,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "adaptive",
+          "correct": true,
+          "tokens": 191,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "static",
+          "correct": true,
+          "tokens": 192,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "adaptive",
+          "correct": true,
+          "tokens": 0,
+          "calls": 0,
+          "costNano": "0"
+        },
+        {
+          "strategy": "static",
+          "correct": true,
+          "tokens": 191,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "adaptive",
+          "correct": true,
+          "tokens": 0,
+          "calls": 0,
+          "costNano": "0"
+        }
+      ],
+      "calls": 29,
+      "tokens": 5553,
+      "models": [
+        "qwen2.5-0.5b-instruct"
+      ],
+      "costNano": "0"
+    },
+    "adaptive": {
+      "decisions": [
+        {
+          "accepted": false,
+          "operator": "count/filter",
+          "question": "Count all rows in the supplied table. Return one overall total without grouping or filters.",
+          "history": 0,
+          "regressions": 1,
+          "before": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 766,
+            "calls": 4,
+            "costNano": "0",
+            "latencyMs": 2923
+          },
+          "after": {
+            "cases": 4,
+            "correct": 3,
+            "tokens": 574,
+            "calls": 3,
+            "costNano": "0",
+            "latencyMs": 2902
+          }
+        },
+        {
+          "accepted": true,
+          "operator": "count",
+          "question": "Count all rows in the attached table. Return one overall total without grouping or filters.",
+          "history": 1,
+          "regressions": 0,
+          "before": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 766,
+            "calls": 4,
+            "costNano": "0",
+            "latencyMs": 2923
+          },
+          "after": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 574,
+            "calls": 3,
+            "costNano": "0",
+            "latencyMs": 3372
+          }
+        },
+        {
+          "accepted": true,
+          "operator": "count",
+          "question": "Count all rows in this table. Return one overall total without grouping or filters.",
+          "history": 2,
+          "regressions": 0,
+          "before": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 574,
+            "calls": 3,
+            "costNano": "0",
+            "latencyMs": 3372
+          },
+          "after": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 383,
+            "calls": 2,
+            "costNano": "0",
+            "latencyMs": 3183
+          }
+        },
+        {
+          "accepted": false,
+          "operator": "count/filter",
+          "question": "Count all rows in this dataset. Return one overall total without grouping or filters.",
+          "history": 1,
+          "regressions": 1,
+          "before": {
+            "cases": 4,
+            "correct": 4,
+            "tokens": 383,
+            "calls": 2,
+            "costNano": "0",
+            "latencyMs": 3183
+          },
+          "after": {
+            "cases": 4,
+            "correct": 3,
+            "tokens": 192,
+            "calls": 1,
+            "costNano": "0",
+            "latencyMs": 2415
+          }
+        }
+      ],
+      "attemptsToFirstPromotion": 2,
+      "final": [
+        {
+          "strategy": "static",
+          "correct": true,
+          "tokens": 192,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "adaptive",
+          "correct": true,
+          "tokens": 192,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "static",
+          "correct": true,
+          "tokens": 191,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "adaptive",
+          "correct": true,
+          "tokens": 191,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "static",
+          "correct": true,
+          "tokens": 192,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "adaptive",
+          "correct": true,
+          "tokens": 0,
+          "calls": 0,
+          "costNano": "0"
+        },
+        {
+          "strategy": "static",
+          "correct": true,
+          "tokens": 191,
+          "calls": 1,
+          "costNano": "0"
+        },
+        {
+          "strategy": "adaptive",
+          "correct": true,
+          "tokens": 0,
+          "calls": 0,
+          "costNano": "0"
+        }
+      ],
+      "calls": 27,
+      "tokens": 5170,
+      "models": [
+        "qwen2.5-0.5b-instruct"
+      ],
+      "costNano": "0"
+    }
+  },
+  "recordedAt": "2026-11-08T16:09:44.404Z"
+}

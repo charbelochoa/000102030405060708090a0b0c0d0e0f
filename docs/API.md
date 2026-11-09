@@ -50,9 +50,10 @@ Todos los endpoints de esta tabla requieren sesión. Experimentos y cambios de v
 | GET | /context/procedures | Procedimientos de la versión activa y casos de desarrollo que los respaldan |
 | GET | /evolution | Versiones, ensayos, mediciones y estado de cierre |
 | POST | /evolution/cases | prompt, file, split, expected, sheet opcional. Solo desarrollo admite plan de referencia |
-| POST | /optimizations | Propone una política a partir de desarrollo |
-| POST | /benchmarks | taskId, strategy, version y budget por caso |
-| POST | /evolution/decide | Aplica la puerta de promoción en validación |
+| POST | /optimizations | Propone un cambio a partir de desarrollo. Acepta mode adaptive o static |
+| POST | /benchmarks | taskId, strategy, version y budget por caso. team1, team2 y team3 calibran arquitecturas en desarrollo |
+| POST | /evolution/decide | Decide en validación y conserva métricas pareadas. Admite candidate para prevenir decisiones obsoletas |
+| POST | /evolution/rounds | Archiva la evaluación finalizada y abre otro ciclo conservando políticas y experiencia |
 | POST | /versions/:id/restore | Restaura una versión validada antes del cierre |
 
 Los adjuntos de entrada usan name, type y data en base64. Una misión admite cinco archivos de hasta 5 MB. El motor devuelve errores de validación HTTP 400 y errores de ejecución HTTP 422. Una misión asíncrona que falla conserva el error recuperable en /runs/:id. La transcripción de la misión puede incluir datos de los archivos. Pertenece a la cuenta que ejecutó la misión.

@@ -1,3 +1,4 @@
+import { parseArgs } from 'node:util'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -18,12 +19,23 @@ async function api(path, body) {
   if (!r.ok) throw new Error(json.error)
   return json
 }
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: { provider: { type: 'string' }, 'max-usd': { type: 'string' } }
+})
+const limit = Number(values['max-usd'] || 0)
+if (values['max-usd'] && (!Number.isFinite(limit) || limit < 0.1))
+  throw Error('Indica un presupuesto de al menos USD 0.10 para el estudio.')
+let measuredCost = 0n
 const snap = await api('/snapshot')
 const connected = snap.settings.providers.filter((p) => p.enabled && p.hasKey)
-if (!connected.length || connected.some((p) => p.id !== 'local' && !p.freeTier))
-  throw new Error(
-    'Este estudio requiere exclusivamente proveedores locales o con cuota gratuita declarada.'
-  )
+if (
+  !connected.length ||
+  (values.provider && (connected.length !== 1 || connected[0].id !== values.provider))
+)
+  throw Error('Conecta solamente el proveedor elegido para este ensayo.')
+if (connected.some((p) => p.id !== 'local' && !p.freeTier) && !(values.provider && limit))
+  throw Error('Para una API de pago indica --provider y --max-usd.')
 if ((await api('/evolution')).cases.length)
   throw new Error('Ejecuta el estudio en un espacio de investigación nuevo.')
 const sources = [],
@@ -67,8 +79,12 @@ for (const [split, make, year] of tasks) {
   })
 }
 async function measure(task, strategy, version) {
+  if (limit && measuredCost + 100000000n > BigInt(Math.round(limit * 1e9)))
+    throw Error('Presupuesto del estudio alcanzado.')
   const result = await api('/benchmarks', { taskId: task.id, strategy, version, budget: 0.1 })
   measurements.push(result)
+  measuredCost += BigInt(result.costNano)
+  if (!result.completeUsage) throw Error('Uso parcial. Se detuvo el ensayo.')
   process.stdout.write(
     [
       task.make,
@@ -116,5 +132,5 @@ const report = {
   ledger,
   decision
 }
-await writeFile(process.argv[2] || 'vpic-study.json', JSON.stringify(report, null, 2))
+await writeFile(positionals[0] || 'vpic-study.json', JSON.stringify(report, null, 2))
 process.stdout.write(JSON.stringify(decision) + '\n')

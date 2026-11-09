@@ -24,14 +24,17 @@ def fetch(entry):
         raise ValueError("Referencia modificada: " + repository)
     revision = entry["revision"]
     current = subprocess.run(["git", "-C", str(folder), "rev-parse", "--verify", "HEAD"], capture_output=True, text=True)
-    if current.returncode == 0 and current.stdout.strip() == revision:
-        print(repository, revision, flush=True)
-        return
-    git("fetch", "--depth=1", "--filter=blob:none", "--no-tags", "origin", revision)
     small = {"crewAI": "lib/crewai/src/crewai", "agent-framework": "python/packages/core/agent_framework"}
-    if name in small:
-        git("sparse-checkout", "set", small[name])
-    git("checkout", "--detach", revision)
+    subtree = entry.get("path") or small.get(name)
+    pinned = current.returncode == 0 and current.stdout.strip() == revision
+    if not pinned:
+        git("fetch", "--depth=1", "--filter=blob:none", "--no-tags", "origin", revision)
+    if subtree and (not pinned or not (folder / subtree).is_dir()):
+        git("sparse-checkout", "set", subtree)
+    if not pinned:
+        git("checkout", "--detach", revision)
+    if subtree and not (folder / subtree).is_dir():
+        raise ValueError("Ruta ausente: " + repository + "/" + subtree)
     if git("rev-parse", "HEAD") != revision:
         raise ValueError(repository)
     print(repository, revision, flush=True)

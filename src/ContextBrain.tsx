@@ -205,6 +205,7 @@ export function ContextBrain() {
       key: string
       query: string
       plan: unknown
+      team?: string[]
       evidence: { file: string; caseId: string; sha256: string }[]
     }[]
   }>()
@@ -429,7 +430,11 @@ export function ContextBrain() {
                 memory.procedures.map((p) => (
                   <details key={p.key}>
                     <summary>{p.query}</summary>
-                    <pre>{JSON.stringify(p.plan, null, 2)}</pre>
+                    {p.team ? (
+                      <p>{p.team.join(' → ')}</p>
+                    ) : (
+                      <pre>{JSON.stringify(p.plan, null, 2)}</pre>
+                    )}
                     {p.evidence.map((e) => (
                       <p key={e.caseId}>
                         {e.file} · SHA256 {e.sha256}

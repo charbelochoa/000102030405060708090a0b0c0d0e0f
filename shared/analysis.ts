@@ -68,8 +68,11 @@ export interface Profile {
   duplicates?: number
   warnings: string[]
 }
-export type Strategy = 'fixed' | 'static' | 'adaptive'
+export const teamStrategies = ['team1', 'team2', 'team3'] as const
+export type Strategy = 'fixed' | 'static' | 'adaptive' | (typeof teamStrategies)[number]
 export interface Procedure {
+  team?: string[]
+  developmentRuns?: string[]
   key: string
   plan: AnalysisPlan
   evidence: string[]
@@ -78,8 +81,31 @@ export interface Policy {
   id: string
   procedures: Procedure[]
   createdAt: string
+  proposal?: Proposal
+}
+export type SearchMode = 'adaptive' | 'static'
+export interface Proposal {
+  mode: SearchMode
+  operator: string
+  key: string
+  question: string
+  action: 'add' | 'replace' | 'retire'
+  acceptedBefore: number
+  rejectedBefore: number
+  evidence: string[]
+  history: string[]
+}
+export interface Performance {
+  cases: number
+  correct: number
+  tokens: number
+  costNano: string
+  calls: number
+  latencyMs: number
 }
 export interface Trial {
+  invalidPlan?: string
+  team?: string[]
   configuration: string
   plan?: AnalysisPlan
   runId: string
@@ -110,6 +136,8 @@ export interface Assessment {
   schemaKey: string
 }
 export interface Study {
+  historyVersion?: number
+  archives?: Pick<Study, 'cases' | 'trials' | 'experiments' | 'active'>[]
   policies: Policy[]
   active: string
   cases: Assessment[]
@@ -122,6 +150,14 @@ export interface Study {
     reason: string
     pairs: number
     createdAt: string
+    proposal?: Proposal
+    baseline?: Performance
+    measured?: Performance
+    round?: number
+    reconstructed?: boolean
+    regressions?: number
+    configuration?: string
+    measurements?: { previous: string; next: string }[]
   }[]
   candidate?: string
   sealed?: boolean

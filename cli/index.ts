@@ -1,3 +1,4 @@
+import { runCampaign } from '../shared/campaign'
 import 'dotenv/config'
 import { Command } from 'commander'
 import chalk from 'chalk'
@@ -13,7 +14,7 @@ import { money, providers, stopLabels } from '../shared/catalog'
 const program = new Command()
   .name('aeris')
   .description('AERIS · agentes, contexto, métricas y evolución.')
-  .version('1.0.0')
+  .version('1.1.0')
   .enablePositionalOptions()
 const endpoint = (process.env.AERIS_URL || 'http://127.0.0.1:4318').replace(/\/$/, '')
 let token = ''
@@ -339,7 +340,7 @@ program
   .option('--version <id>', 'Versión, por defecto estable')
   .option('--split <split>', 'dev, validation o test', 'validation')
   .option('--task <id>')
-  .option('--strategy <strategy>', 'fixed, static o adaptive', 'adaptive')
+  .option('--strategy <strategy>', 'fixed, static, adaptive, team1, team2 o team3', 'adaptive')
   .option('--budget <usd>', 'USD por caso', Number, 0.1)
   .action(async (options) => {
     const s = await request('/evolution')
@@ -373,12 +374,32 @@ program
   .action(async () => print(await request('/evolution/decide', {})))
 program
   .command('optimize')
-  .description('Proponer y validar una política candidata')
-  .action(async () => print(await request('/optimizations', {})))
+  .description('Proponer el siguiente cambio a partir del desarrollo y del historial')
+  .option('--mode <mode>', 'adaptive o static', 'adaptive')
+  .action(async (options) => print(await request('/optimizations', { mode: options.mode })))
+program
+  .command('learn')
+  .option('--teams', 'Medir planificación con uno, dos y tres agentes en desarrollo')
+  .option('--mode <mode>', 'adaptive o static', 'adaptive')
+  .option('--generations <n>', 'Máximo de propuestas', Number, 3)
+  .option('--budget <usd>', 'USD por rama', Number, 0.1)
+  .option('--max-usd <usd>', 'Presupuesto de la campaña', Number, 2)
+  .action(async (options) => {
+    const result = await runCampaign(request, options, (message) =>
+      process.stderr.write(message + '\n')
+    )
+    print(result)
+    if (!result.decisions.length && !result.reason.startsWith('Sin cambios nuevos'))
+      process.exitCode = 1
+  })
 program
   .command('versions')
   .description('Versiones y memoria experimental')
   .action(async () => print(await request('/evolution')))
+program
+  .command('next-round')
+  .description('Abrir otro ciclo con la política y la experiencia acumuladas')
+  .action(async () => print(await request('/evolution/rounds', {})))
 program
   .command('context')
   .description('Páginas del cerebro de contexto')
@@ -428,7 +449,7 @@ program
     print(chalk.green(banner))
     print(
       chalk.gray(
-        `\nIntelligence, in progress. v1.0.0\n${options.name} · sala ${options.room} · API\n`
+        `\nIntelligence, in progress. v1.1.0\n${options.name} · sala ${options.room} · API\n`
       )
     )
     print(chalk.gray('/help para comandos. /exit para salir.'))

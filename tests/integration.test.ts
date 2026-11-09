@@ -355,7 +355,7 @@ test('CLI benchmark policy version does not collide with the application version
   assert.equal(report.split, 'dev')
   assert.equal(report.count, 0)
   const version = await execute(process.execPath, ['--import', 'tsx', cli, '--version'], options)
-  assert.equal(version.stdout.trim(), '1.0.0')
+  assert.equal(version.stdout.trim(), '1.1.0')
 })
 
 test('análisis tabular completo, procedencia y protección de divisas', async () => {
@@ -599,6 +599,298 @@ test('una credencial asigna modelos distintos al plan, ejecución y revisión so
     assert.deepEqual(roles, ['gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'])
     assert.equal(run.calls.length, 3)
     assert.ok(run.calls.every((c: { state: string }) => c.state === 'reported'))
+  } finally {
+    globalThis.fetch = original
+    setKey('openai', '')
+  }
+})
+
+test('la siguiente candidata aprende del rechazo y permite añadir desarrollo durante el estudio', async () => {
+  const { addCase, propose, decide, study, studyView } = await import('../server/study')
+  const owner = 'proposal-history',
+    make = (n: number) => ({
+      name: 'archivo.csv',
+      type: 'text/csv' as const,
+      data: Buffer.from('tipo\n' + Array(n).fill('A').join('\n')).toString('base64')
+    })
+  const count = { aggregation: 'count' as const },
+    filtered = { ...count, filters: [{ column: 'tipo', equals: 'A' }] }
+  const prompts = ['Contar todo A', 'Contar todo B', 'Contar todo C']
+  for (const [i, prompt] of prompts.entries())
+    await addCase(owner, {
+      file: make(2),
+      split: 'dev',
+      prompt,
+      expected: [{ label: 'Total', value: '2' }],
+      plan: i === 2 ? count : filtered
+    })
+  const v = await addCase(owner, {
+    file: make(3),
+    split: 'validation',
+    prompt: prompts[0],
+    expected: [{ label: 'Total', value: '3' }]
+  })
+  const state = study(owner),
+    first = propose(owner)
+  assert.equal(first.proposal?.question, prompts[0])
+  for (const [i, strategy] of (['fixed', 'static', 'adaptive', 'adaptive'] as const).entries())
+    state.trials.push({
+      taskId: v.id,
+      runId: 'controlled-' + i,
+      strategy,
+      version: i === 3 ? first.id : 'v1',
+      configuration: 'same',
+      success: i !== 3,
+      completeUsage: true,
+      costNano: '0',
+      tokens: i === 3 ? 0 : 100,
+      calls: i === 3 ? 0 : 1,
+      latencyMs: 3,
+      recalled: i === 3
+    })
+  const rejection = decide(owner, first.id)
+  assert.equal(rejection.accepted, false)
+  assert.equal(rejection.regressions, 1)
+  assert.deepEqual(rejection.measurements, [{ previous: 'controlled-2', next: 'controlled-3' }])
+  await assert.rejects(
+    addCase(owner, {
+      file: make(4),
+      split: 'validation',
+      prompt: prompts[0],
+      expected: [{ label: 'Total', value: '4' }]
+    }),
+    /cerrado/
+  )
+  await addCase(owner, {
+    file: make(4),
+    split: 'dev',
+    prompt: prompts[2],
+    plan: count,
+    expected: [{ label: 'Total', value: '4' }]
+  })
+  data.studies!['fixed-control'] = structuredClone(state)
+  assert.equal(propose('fixed-control', 'static').proposal?.question, prompts[1])
+  const next = propose(owner, 'adaptive')
+  assert.equal(next.proposal?.question, prompts[2])
+  assert.deepEqual(next.proposal?.history, [rejection.id])
+  assert.equal(next.proposal?.evidence.length, 2)
+  assert.throws(() => decide(owner, first.id), /cambió/)
+  assert.equal(studyView(owner).experiments[0].measured?.correct, 0)
+  assert.equal(state.active, 'v1')
+})
+
+test('el planificador puede delegar un análisis y entregar su respuesta al constructor', async () => {
+  const original = globalThis.fetch
+  setKey('openai', 'controlled')
+  const roles: string[] = []
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('api.openai.com/')) return original(url, init)
+    const body = JSON.parse(String(init?.body))
+    const index = roles.push(body.model)
+    if (index === 3)
+      assert.ok(
+        body.messages.some((m: { content: unknown }) =>
+          String(m.content).includes('revisar los nulos')
+        )
+      )
+    const content =
+      index === 1
+        ? JSON.stringify({
+            tier: 'medium',
+            steps: ['Estudiar la calidad de los datos'],
+            handoffs: [{ task: 'Diseñar el criterio de calidad', tier: 'high' }]
+          })
+        : index === 2
+          ? 'Conviene revisar los nulos.'
+          : 'Se preparó el criterio.'
+    return Response.json({
+      model: body.model,
+      choices: [{ message: { content } }],
+      usage: { prompt_tokens: 12, completion_tokens: 8 }
+    })
+  }
+  try {
+    let run = (await call('/runs', { prompt: 'Organiza un análisis de calidad de los datos' }))
+      .value
+    for (let i = 0; i < 120 && ['queued', 'running'].includes(run.status); i++) {
+      await delay(20)
+      run = (await call('/runs/' + run.id)).value
+    }
+    assert.equal(run.status, 'completed', run.error)
+    assert.equal(roles.length, 3)
+    assert.deepEqual(
+      run.steps
+        .filter((s: { role: string }) => ['delegate', 'handoff'].includes(s.role))
+        .map((s: { role: string }) => s.role),
+      ['delegate', 'handoff']
+    )
+    assert.equal(run.calls.length, 3)
+  } finally {
+    globalThis.fetch = original
+    setKey('openai', '')
+  }
+})
+test('un nuevo ciclo conserva aprendizajes y bloquea archivos reservados anteriores', async () => {
+  const { addCase, propose, nextRound, study, studyView, publishedMemory } =
+    await import('../server/study')
+  const owner = 'closed-round',
+    s = study(owner)
+  const source = (value: string) => ({
+    name: 'tabla.csv',
+    type: 'text/csv' as const,
+    data: Buffer.from('x\n' + value).toString('base64')
+  })
+  const add = (split: 'dev' | 'validation' | 'test', value: string, prompt = 'Cuenta') =>
+    addCase(owner, {
+      split,
+      prompt,
+      file: source(value),
+      expected: [{ label: 'Total', value: '1' }],
+      plan: split === 'dev' ? { aggregation: 'count' } : undefined
+    })
+  await add('dev', 'A')
+  await add('validation', 'B')
+  const holdout = await add('test', 'C')
+  const p = propose(owner)
+  s.active = p.id
+  delete s.candidate
+  s.experiments.push({
+    id: 'past',
+    parent: 'v1',
+    candidate: p.id,
+    accepted: true,
+    pairs: 1,
+    reason: 'corrección verificada',
+    createdAt: new Date().toISOString()
+  })
+  s.sealed = true
+  assert.throws(() => nextRound(owner), /test/)
+  for (const strategy of ['static', 'adaptive'] as const)
+    s.trials.push({
+      configuration: 'fixed',
+      runId: strategy,
+      taskId: holdout.id,
+      strategy,
+      version: s.active,
+      success: true,
+      completeUsage: true,
+      tokens: 0,
+      costNano: '0',
+      latencyMs: 1,
+      calls: 0,
+      recalled: true
+    })
+  assert.equal(nextRound(owner).round, 2)
+  assert.equal(publishedMemory(owner).procedures[0].query, 'Cuenta')
+  assert.equal(studyView(owner).experiments[0].id, 'past')
+  await assert.rejects(add('dev', 'C', 'Otra pregunta'), /duplicado/)
+  await assert.rejects(add('validation', 'B', 'Otra pregunta'), /duplicado/)
+  await add('validation', 'D')
+  await add('dev', 'E', 'Cuántos registros')
+  assert.equal(propose(owner).procedures.length, 2)
+})
+
+test('la campaña respeta la reserva restante antes de la siguiente rama', async () => {
+  const { runCampaign } = await import('../shared/campaign')
+  let calls = 0
+  const fake = async <T>(path: string): Promise<T> => {
+    if (path === '/evolution')
+      return {
+        active: 'v1',
+        policies: [],
+        sealed: false,
+        cases: [{ id: 'x', split: 'validation' }]
+      } as T
+    if (path === '/optimizations') return { id: 'p-x', proposal: { mode: 'adaptive' } } as T
+    assert.equal(path, '/benchmarks')
+    calls++
+    return { runId: 'r' + calls, completeUsage: true, costNano: '21000000' } as T
+  }
+  const result = await runCampaign(fake, {
+    mode: 'adaptive',
+    generations: 4,
+    budget: 0.1,
+    maxUsd: 0.12
+  })
+  assert.equal(calls, 1)
+  assert.equal(result.reason, 'Presupuesto de la campaña alcanzado.')
+  assert.equal(result.costNano, '21000000')
+  assert.equal(result.decisions.length, 0)
+})
+
+test('la calibración mide las tres arquitecturas y solo ofrece equipos con aciertos verificados', async () => {
+  const { addCase, evaluate, propose, study } = await import('../server/study')
+  const { selectProposal } = await import('../server/proposal-search')
+  const owner = 'team-calibration',
+    prompt = 'Calcula el total de valor',
+    file = (rows: string) => ({
+      name: 'medida.csv',
+      type: 'text/csv' as const,
+      data: Buffer.from('valor\n' + rows).toString('base64')
+    })
+  const development = await addCase(owner, {
+    prompt,
+    file: file('4\n7'),
+    split: 'dev',
+    expected: [{ label: 'Total', value: '11' }]
+  })
+  const validation = await addCase(owner, {
+    prompt,
+    file: file('2\n8'),
+    split: 'validation',
+    expected: [{ label: 'Total', value: '10' }]
+  })
+  const original = globalThis.fetch
+  setKey('openai', 'controlled')
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('api.openai.com/')) return original(url, init)
+    const body = JSON.parse(String(init?.body)),
+      plan =
+        body.model === 'gpt-5.4'
+          ? { aggregation: 'sum', metric: 'valor' }
+          : { aggregation: 'count' }
+    return Response.json({
+      model: body.model,
+      choices: [
+        { message: { content: body.model === 'gpt-5.4-nano' ? 'sin JSON' : JSON.stringify(plan) } }
+      ],
+      usage: { prompt_tokens: 16, completion_tokens: 8 }
+    })
+  }
+  try {
+    const results = []
+    for (const strategy of ['team1', 'team2', 'team3'] as const)
+      results.push(await evaluate(owner, development.id, strategy, 'v1', 0.1))
+    assert.deepEqual(
+      results.map((t) => [t.calls, t.success]),
+      [
+        [1, false],
+        [2, false],
+        [3, true]
+      ]
+    )
+    assert.ok(results[0].invalidPlan)
+    assert.equal(results[0].error, undefined)
+    assert.deepEqual(results[2].team, ['gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'])
+    await assert.rejects(evaluate(owner, validation.id, 'team3', 'v1', 0.1), /desarrollo/)
+    const direct = propose(owner),
+      s = study(owner)
+    const alternative = selectProposal(
+      s.cases.filter((c) => c.split === 'dev'),
+      results,
+      s.policies[0],
+      s.policies,
+      s.experiments,
+      'adaptive'
+    )
+    assert.equal(direct.proposal?.operator, 'sum')
+    assert.equal(alternative?.proposal?.operator, 'team/3')
+    assert.deepEqual(alternative?.procedures[0].developmentRuns, [results[2].runId])
+    s.policies.push({ ...alternative!, createdAt: new Date().toISOString() })
+    const applied = await evaluate(owner, validation.id, 'adaptive', alternative!.id, 0.1)
+    assert.equal(applied.calls, 3)
+    assert.equal(applied.success, true)
+    assert.equal(s.active, 'v1')
   } finally {
     globalThis.fetch = original
     setKey('openai', '')

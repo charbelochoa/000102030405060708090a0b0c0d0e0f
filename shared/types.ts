@@ -87,6 +87,7 @@ export interface Run {
     tariff: Model
   }[]
   charts?: Record<string, 'bar' | 'line'>
+  invalidPlan?: boolean
   artifacts?: string[]
   steps?: { role: string; model?: string; detail: string }[]
   error?: string

@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, useWorkspace } from './lib'
 import { SectionTitle } from './components'
 import { money } from '../shared/catalog'
 import type { Trial, Study } from '../shared/analysis'
+import { runCampaign } from '../shared/campaign'
+import { Generations } from './Generations'
+import type { SearchMode } from '../shared/analysis'
 type View = {
   active: string
   candidate?: string
   sealed: boolean
+  round: number
   cases: { id: string; source: string; split: string }[]
   policies: { id: string; procedures: number }[]
   experiments: Study['experiments']
@@ -65,23 +69,38 @@ function Efficiency({ state }: { state: View }) {
   )
 }
 export function MemoryEfficiency() {
+  const { snapshot } = useWorkspace()
+  const changed = snapshot?.events.findLast(
+    (e) => e.type === 'study.measured' || e.type === 'policy.decision' || e.type === 'study.round'
+  )?.id
   const [state, setState] = useState<View>(),
     [error, setError] = useState('')
   useEffect(() => {
     api<View>('/evolution')
       .then(setState)
       .catch((e) => setError(e.message))
-  }, [])
+  }, [changed])
   return state ? <Efficiency state={state} /> : <p role="status">{error}</p>
 }
 export function Evolution() {
   const [state, setState] = useState<View>(),
     [busy, setBusy] = useState(false)
-  const { notify } = useWorkspace()
+  const { notify, snapshot } = useWorkspace()
+  const [mode, setMode] = useState<SearchMode>('adaptive'),
+    [generations, setGenerations] = useState(3),
+    [budget, setBudget] = useState(0.1),
+    [maxUsd, setMaxUsd] = useState(2),
+    [teams, setTeams] = useState(false),
+    [status, setStatus] = useState('')
+  const campaign = useRef<AbortController | null>(null)
+  const changed = snapshot?.events.findLast((e) =>
+    ['policy.decision', 'memory.consolidated', 'study.measured', 'study.round'].includes(e.type)
+  )?.id
+  useEffect(() => () => campaign.current?.abort(), [])
   const load = async () => setState(await api('/evolution'))
   useEffect(() => {
     load().catch((e) => notify(e.message, true))
-  }, [])
+  }, [changed])
   async function act(path: string, body: unknown = {}) {
     setBusy(true)
     try {
@@ -103,6 +122,11 @@ export function Evolution() {
         >
           Consolidar experiencias
         </button>
+        {state?.sealed && (
+          <button className="button" disabled={busy} onClick={() => void act('/evolution/rounds')}>
+            Nuevo ciclo
+          </button>
+        )}
         {state?.candidate && (
           <button
             className="button primary"
@@ -115,6 +139,90 @@ export function Evolution() {
       </SectionTitle>
       {state && (
         <>
+          <Generations experiments={state.experiments} />
+          <details className="panel lab-panel campaign-controls">
+            <summary>Campaña de aprendizaje</summary>
+            <div>
+              <label>
+                Estrategia
+                <select value={mode} onChange={(e) => setMode(e.target.value as SearchMode)}>
+                  <option value="adaptive">Aprender de decisiones</option>
+                  <option value="static">Orden fijo de control</option>
+                </select>
+              </label>
+              <label className="campaign-check">
+                <input
+                  type="checkbox"
+                  checked={teams}
+                  onChange={(e) => setTeams(e.target.checked)}
+                />
+                Comparar equipos de 1, 2 y 3 agentes
+              </label>
+              <label>
+                Generaciones
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={generations}
+                  onChange={(e) => setGenerations(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                USD por rama
+                <input
+                  type="number"
+                  min="0.001"
+                  max="5"
+                  step="0.001"
+                  value={budget}
+                  onChange={(e) => setBudget(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                USD por campaña
+                <input
+                  type="number"
+                  min={budget}
+                  step=".01"
+                  value={maxUsd}
+                  onChange={(e) => setMaxUsd(Number(e.target.value))}
+                />
+              </label>
+              <button
+                className="button primary"
+                disabled={busy || state.sealed || !state.cases.length}
+                onClick={async () => {
+                  const controller = new AbortController()
+                  campaign.current = controller
+                  setBusy(true)
+                  try {
+                    const report = await runCampaign(
+                      api,
+                      { mode, generations, budget, maxUsd, teams },
+                      setStatus,
+                      controller.signal
+                    )
+                    setStatus(report.reason)
+                    await load()
+                  } catch (e) {
+                    notify((e as Error).message, true)
+                  } finally {
+                    campaign.current = null
+                    setBusy(false)
+                  }
+                }}
+              >
+                Iniciar campaña
+              </button>
+              {campaign.current && (
+                <button className="button" onClick={() => campaign.current?.abort()}>
+                  Detener al terminar la rama
+                </button>
+              )}
+            </div>
+            {status && <p role="status">{status}</p>}
+          </details>
           <section className="panel lab-panel">
             <header>
               <h2>Política activa</h2>
@@ -167,7 +275,10 @@ export function Evolution() {
                 <div className="event-line" key={c.id}>
                   <strong>{c.source}</strong>
                   <p>{c.split}</p>
-                  {c.split !== 'test' && (
+                  {(c.split === 'test'
+                    ? !state.candidate &&
+                      state.experiments.some((e) => (e.round || 1) === state.round)
+                    : !state.sealed) && (
                     <button
                       disabled={busy}
                       className="button"
@@ -177,18 +288,23 @@ export function Evolution() {
                           const branches =
                             c.split === 'dev'
                               ? [['static', 'v1']]
-                              : [
-                                  ['fixed', 'v1'],
-                                  ['static', 'v1'],
-                                  ['adaptive', state.active],
-                                  ...(state.candidate ? [['adaptive', state.candidate]] : [])
-                                ]
+                              : c.split === 'test'
+                                ? [
+                                    ['static', 'v1'],
+                                    ['adaptive', state.active]
+                                  ]
+                                : [
+                                    ['fixed', 'v1'],
+                                    ['static', 'v1'],
+                                    ['adaptive', state.active],
+                                    ...(state.candidate ? [['adaptive', state.candidate]] : [])
+                                  ]
                           for (const [strategy, version] of branches) {
                             const t = await api<Trial>('/benchmarks', {
                               taskId: c.id,
                               strategy,
                               version,
-                              budget: 0.1
+                              budget
                             })
                             if (t.error) throw new Error(t.error)
                           }
@@ -201,7 +317,8 @@ export function Evolution() {
                         }
                       }}
                     >
-                      Medir · $0.10 máx./rama
+                      {c.split === 'test' ? 'Evaluar test y sellar el ciclo' : 'Medir'} · ${budget}{' '}
+                      máx./rama
                     </button>
                   )}
                 </div>
@@ -214,8 +331,9 @@ export function Evolution() {
             <header>
               <h2>Experimentos</h2>
             </header>
-            {state.experiments.length ? (
-              state.experiments.map((e) => (
+            {state.experiments
+              .filter((e) => !e.measured)
+              .map((e) => (
                 <div key={e.id}>
                   <code>
                     {e.parent} → {e.candidate}
@@ -224,10 +342,7 @@ export function Evolution() {
                     {e.accepted ? 'Aceptada' : 'Rechazada'} · {e.reason}
                   </p>
                 </div>
-              ))
-            ) : (
-              <p>Sin decisiones de promoción.</p>
-            )}
+              ))}
             {state.trials.length > 0 && (
               <div className="lab-table">
                 <table>
@@ -246,7 +361,9 @@ export function Evolution() {
                       <tr key={t.runId}>
                         <td>{t.taskId.slice(0, 8)}</td>
                         <td>{t.strategy}</td>
-                        <td>{t.error || (t.success ? 'Correcto' : 'Incorrecto')}</td>
+                        <td>
+                          {t.error || t.invalidPlan || (t.success ? 'Correcto' : 'Incorrecto')}
+                        </td>
                         <td>{t.calls}</td>
                         <td>{t.tokens}</td>
                         <td>

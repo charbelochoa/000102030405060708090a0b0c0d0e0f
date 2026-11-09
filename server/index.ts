@@ -97,7 +97,7 @@ export function createApp() {
   })
   app.use(express.json({ limit: '34mb' }))
   app.use(identity)
-  app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'AERIS', version: '1.0.0' }))
+  app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'AERIS', version: '1.1.0' }))
   app.get('/api/snapshot', (req, res) => {
     const id = owner(req)
     res.json({

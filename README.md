@@ -20,7 +20,7 @@ npm run build
 npm run desktop:build
 ```
 
-El portable queda en `release/AERIS-1.0.0-Windows.exe`. Abre un servidor en loopback en el puerto 4319. El motor de desarrollo usa el 4318.
+El portable queda en `release/AERIS-1.1.0-Windows.exe`. Abre un servidor en loopback en el puerto 4319. El motor de desarrollo usa el 4318.
 
 ## Terminal
 
@@ -39,5 +39,6 @@ Un plan tabular mínimo puede ser `{"aggregation":"count"}`. Para sumar una colu
 - [Arquitectura y alcance](docs/ARQUITECTURA.md)
 - [API](docs/API.md)
 - [Protocolo del experimento](docs/HACKATHON.md)
+- [Auditoría, referencias y resultados del aprendizaje entre generaciones](docs/AUDITORIA-1.1.md)
 - [Resultados y verificación](docs/VERIFICACION.md)
 - [Referencias](docs/REFERENCIAS.md) y [atribuciones](docs/TERCEROS.md)

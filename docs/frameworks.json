@@ -38,5 +38,77 @@
   {
     "repository": "anomalyco/opencode",
     "revision": "5a47777cc4c7511082e9ca5d4b430cea8113c4bb"
+  },
+  {
+    "repository": "logseq/logseq",
+    "revision": "d3b4ea8f51b3058ac4a436e77d50d633f11fd881",
+    "scope": "reference",
+    "path": "src/main/frontend/db"
+  },
+  {
+    "repository": "a16z-infra/ai-town",
+    "revision": "1b2f7d8b824c7bc679017a091d9d45ba3dc3029e",
+    "scope": "reference",
+    "path": "convex/aiTown"
+  },
+  {
+    "repository": "joonspk-research/generative_agents",
+    "revision": "fe05a71d3e4ed7d10bf68aa4eda6dd995ec070f4",
+    "scope": "reference",
+    "path": "reverie/backend_server/persona/cognitive_modules"
+  },
+  {
+    "repository": "d3/d3",
+    "revision": "db118c93a429e82b83f091dbaa18fd0a82c06130",
+    "scope": "reference",
+    "path": "src"
+  },
+  {
+    "repository": "epezent/implot",
+    "revision": "72de27832d1e6299bcc930ce01073d899d420392",
+    "scope": "reference",
+    "path": "example"
+  },
+  {
+    "repository": "apache/echarts",
+    "revision": "34f4d927eafe251f26f63afd3aeefa30f2feba30",
+    "scope": "reference",
+    "path": "src/chart/line"
+  },
+  {
+    "repository": "tremorlabs/tremor",
+    "revision": "ca4d588f47820ff3d514d37fa4ee08a4222dec11",
+    "scope": "reference",
+    "path": "src"
+  },
+  {
+    "repository": "plotly/plotly.py",
+    "revision": "3c1aeba0a90ef6f7a32fd35a48338ef7ee349d93",
+    "scope": "reference",
+    "path": "plotly/express"
+  },
+  {
+    "repository": "mwaskom/seaborn",
+    "revision": "c1cb287835852406691aed60ea0c62710f2c6b18",
+    "scope": "reference",
+    "path": "seaborn/_stats"
+  },
+  {
+    "repository": "axiaoge2/Apple-Hig-Designer",
+    "revision": "ff17b91ff2903ecd52940afabf97de5a73c9cd1b",
+    "scope": "reference",
+    "path": "resources"
+  },
+  {
+    "repository": "DietrichGebert/ponytail",
+    "revision": "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846",
+    "scope": "reference",
+    "path": "skills"
+  },
+  {
+    "repository": "ProxyAyush/Ponytail-Caveman",
+    "revision": "89fb8ea2394351e9970c02c7af0f2b5c0d2d585f",
+    "scope": "reference",
+    "path": "skills"
   }
 ]

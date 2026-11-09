@@ -1,0 +1,41 @@
+{
+  "source": "https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/Honda/modelyear/2023?format=json",
+  "retrievedAt": "2026-11-09T00:54:05.339Z",
+  "rows": 83,
+  "sha256": "77e57590c9572312a54fbf9e2cfdfd79de9beaca1e43ccd068bbdad7de29fb1a",
+  "measurements": [
+    {
+      "strategy": "team1",
+      "team": [
+        "qwen2.5-0.5b-instruct"
+      ],
+      "success": true,
+      "tokens": 191,
+      "calls": 1,
+      "costNano": "0"
+    },
+    {
+      "strategy": "team2",
+      "team": [
+        "qwen2.5-0.5b-instruct",
+        "qwen2.5-0.5b-instruct"
+      ],
+      "success": true,
+      "tokens": 431,
+      "calls": 2,
+      "costNano": "0"
+    },
+    {
+      "strategy": "team3",
+      "team": [
+        "qwen2.5-0.5b-instruct",
+        "qwen2.5-0.5b-instruct",
+        "qwen2.5-0.5b-instruct"
+      ],
+      "success": true,
+      "tokens": 685,
+      "calls": 3,
+      "costNano": "0"
+    }
+  ]
+}

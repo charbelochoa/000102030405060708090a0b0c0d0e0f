@@ -33,3 +33,5 @@ La CLI usa la misma API. En dos terminales, usa `chat --room equipo --name atlas
 Desde el resultado de una misión o análisis, **Validar para memoria** contrasta la operación con una respuesta independiente y registra el vínculo a la traza. La pregunta y el esquema identifican el procedimiento. La consolidación y promoción requieren casos adicionales de validación.
 
 El protocolo, los datos requeridos y las condiciones para promover o restaurar una política están en [el ensayo del hackathon](HACKATHON.md). Las mediciones empiezan vacías en cada espacio.
+
+En **Evolución → Campaña de aprendizaje**, ejecuta varias propuestas con presupuesto y límite de generaciones. **Generaciones** permite inspeccionar aciertos, tokens, llamadas, coste y latencia por tarea. Al evaluar el test se sella el ciclo. Una vez medidos todos los casos reservados en ambas ramas, **Nuevo ciclo** abre otra evaluación y conserva la experiencia anterior. [Comandos y reproducción](HACKATHON.md) La opción **Comparar equipos de 1, 2 y 3 agentes** mide los tres flujos en desarrollo antes de proponer una configuración.
