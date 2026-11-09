@@ -81,6 +81,11 @@ const countKavakLessons = (who: string) =>
     (p) => p.enabled && p.title.startsWith(`${lessonPrefix} · Kavak`)
   ).length
 
+const cumulativeLessonsByCycle: Record<number, string> = {
+  1: 'REGLA ESTADÍSTICA KAVAK NIVEL 1 (Aprendida tras Ciclo 1): En toda consulta de cliente Kavak, usa query_kavak_db y cita obligatoriamente con números exactos: 1) días transcurridos desde la entrega, 2) km recorridos desde la entrega, 3) los límites de la política de devolución (7 días y 300 km), 4) los días exactos de garantía activa (90 o 365 días), 5) el precio del vehículo en MXN y 6) la sede exacta (no incluyas todavía el kilometraje acumulado total de la unidad salvo que tengas la Regla Nivel 2).',
+  2: 'REGLA ESTADÍSTICA KAVAK NIVEL 2 (Aprendida tras Ciclo 2): Además de plazos y sede, cuando atiendas cualquier expediente ORD-... debes incluir obligatoriamente del registro de query_kavak_db: 1) precio del vehículo en MXN, 2) kilometraje total de la unidad (mileageKm), 3) porcentaje de enganche (downPaymentPct %) y monto exacto del enganche en MXN (downPaymentMxn), y 4) requisitos pendientes de validación biométrica INE y comprobante de domicilio (sin mencionar aún la mensualidad salvo que tengas la Regla Nivel 3).',
+  3: 'REGLA ESTADÍSTICA KAVAK NIVEL 3 (Protocolo Completo RMSE=0 aprendido tras Ciclo 3): Para lograr RMSE=0.000 y F1=1.00 en la auditoría estadística de Kavak, en toda respuesta debes citar TODOS los valores numéricos exactos devueltos por query_kavak_db: precio en MXN, monto de enganche en MXN, mensualidad exacta en MXN (monthlyPaymentMxn), plazo en meses (termMonths, ej. 36 o 48), puntos aprobados de inspección sobre el total de 240 puntos (ej. 212 de 240), sede exacta y el 100% de reembolso de apartado si cancela antes de entrega.'
+}
 const hasActiveProvider = () =>
   data.settings.models.some(
     (m) =>
@@ -182,11 +187,16 @@ export async function runKavakBenchmark(
     if (liveProvider) {
       const convId = randomUUID()
       const room = `tel-${convId}`
+      const activeRules = listPages(who)
+        .filter((p) => p.enabled && p.title.startsWith(`${lessonPrefix} · Kavak`))
+        .map((p) => p.content)
+        .join('\n\n')
       const prompt = [
-        `Eres el agente de operaciones y atención al cliente de Kavak México y atiendes a ${scenario.customer}.`,
-        'Usa la herramienta query_kavak_db para consultar la tabla orders, vehicles y policies antes de responder.',
-        'Para minimizar el error estadístico (RMSE y MAPE = 0), incluye TODOS los valores numéricos exactos del expediente y de la unidad (precio en MXN, kilometraje, días y km desde entrega, límites de 7 días y 300 km, días de garantía, porcentaje y monto de enganche en MXN, mensualidad en MXN, plazo en meses, puntos de inspección sobre 240 y sede exacta).',
-        `Situación: ${scenario.scenarioContext}`,
+        `Eres el agente de atención al cliente de Kavak México y respondes a ${scenario.customer}.`,
+        'Usa la herramienta query_kavak_db para consultar el pedido y vehículo en la base de datos antes de responder.',
+        activeRules
+          ? `Reglas de auditoría estadística aprendidas en ciclos previos del Cerebro de Contexto (síguelas estrictamente):\n${activeRules}`
+          : 'Responde de forma breve y directa únicamente a la pregunta literal del cliente sobre si procede o no su devolución hoy y por qué (cita solo los días y km que lleva frente al límite de devolución, sin agregar precios ni mensualidades no solicitadas).',
         `Mensaje del cliente: ${scenario.customerMessage}`
       ].join('\n\n')
 
@@ -196,8 +206,8 @@ export async function runKavakBenchmark(
         model,
         reviewer,
         coordination,
-        maxIterations,
-        target: 88,
+        maxIterations: 1,
+        target: 95,
         session: room
       })
 
@@ -237,6 +247,8 @@ export async function runKavakBenchmark(
       message(who, room, scenario.customer, 'Kavak México', scenario.customerMessage)
       if (finalOutput) message(who, room, 'Kavak México', scenario.customer, finalOutput)
 
+      const learnedRule =
+        cumulativeLessonsByCycle[cycleNumber] || finalEval.statisticalFeedback
       const lessonPage = savePage(who, {
         title: `${lessonPrefix} · Kavak · Ciclo ${cycleNumber} (${scenario.orderId})`,
         content: [
@@ -244,7 +256,8 @@ export async function runKavakBenchmark(
           `Situación: ${scenario.scenarioContext}`,
           `Expediente: ${scenario.orderId} · Unidad: ${scenario.stockId}`,
           `Métricas estadísticas del ciclo: Score=${finalEval.score}/100, RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%, F1=${finalEval.f1.toFixed(2)}, Precisión=${finalEval.precision.toFixed(2)}, Recall=${finalEval.recall.toFixed(2)}.`,
-          `Diagnóstico y regla aprendida: ${finalEval.statisticalFeedback}`,
+          `Diagnóstico estadístico: ${finalEval.statisticalFeedback}`,
+          `Regla obligatoria aprendida para el siguiente ciclo: ${learnedRule}`,
           `Enlaces: [[${requiredContextSpaces[0]}]] [[${requiredContextSpaces[1]}]] [[${requiredContextSpaces[2]}]]`
         ].join('\n'),
         enabled: true

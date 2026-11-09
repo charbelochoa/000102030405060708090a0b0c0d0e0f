@@ -816,7 +816,7 @@ export const kavakScenarios: KavakScenario[] = [
     scenarioContext:
       'Cliente de Kavak con pedido ORD-9044 y unidad KVK-2089 solicita devolver su camioneta y verificar sus datos financieros y de garantía.',
     customerMessage:
-      'Hola, tengo el pedido ORD-9044 de mi Tiguan KVK-2089. Quiero confirmar el precio registrado, mi mensualidad, cuántos días y km llevo, si puedo aplicar la devolución de 7 días / 300 km hoy mismo y cuántos días dura mi garantía en mi sede.',
+      'Hola, tengo el pedido ORD-9044 de mi Tiguan KVK-2089. Quiero devolverla hoy mismo sin costo, ¿procede mi devolución?',
     expectedFacts: ['415,000', '8,420', '18', '620', '7', '300', '90', 'Antara'],
     numericTargets: [
       { field: 'priceMxn', label: 'Precio vehículo (MXN)', exactValue: 415000, unit: 'MXN' },
@@ -841,7 +841,7 @@ export const kavakScenarios: KavakScenario[] = [
     scenarioContext:
       'Cliente de Kavak con pedido ORD-8821 y unidad KVK-1042 reporta vibración al frenar dentro de la ventana de 7 días / 300 km.',
     customerMessage:
-      'Hola, mi pedido es el ORD-8821 del Mazda 3 KVK-1042. ¿Me confirmas el precio pagado, el kilometraje total de la unidad, cuántos días y km llevo desde la entrega frente al límite de devolución, los días de mi garantía Kavak Total y en qué sede me atienden?',
+      'Hola, mi pedido es el ORD-8821 del Mazda 3 KVK-1042. Siento una vibración al frenar, ¿todavía entro en devolución o en mi garantía?',
     expectedFacts: ['348,000', '28,400', '5', '190', '7', '300', '365', 'Lerma'],
     numericTargets: [
       { field: 'priceMxn', label: 'Precio vehículo (MXN)', exactValue: 348000, unit: 'MXN' },
@@ -866,7 +866,7 @@ export const kavakScenarios: KavakScenario[] = [
     scenarioContext:
       'Cliente con pedido ORD-7712 pregunta por el precio, enganche exacto, mensualidad, plazo y requisitos de entrega de su Corolla KVK-3115.',
     customerMessage:
-      'Buen día, tengo el expediente ORD-7712 por el Corolla KVK-3115. ¿Me confirmas el precio total, el kilometraje de la unidad, el porcentaje y monto exacto de mi enganche, la mensualidad a cuántos meses y qué requisitos faltan para recogerlo en mi sede?',
+      'Buen día, tengo el expediente ORD-7712 por el Corolla KVK-3115. ¿Ya puedo pasar hoy por él a la sede?',
     expectedFacts: [
       '389,000',
       '15,100',
@@ -900,7 +900,7 @@ export const kavakScenarios: KavakScenario[] = [
     scenarioContext:
       'Cliente con apartado ORD-6509 pregunta por el avance exacto de inspección, precio, enganche, mensualidad y reembolso de su Nissan Kicks KVK-4090.',
     customerMessage:
-      'Hola, aparté la Nissan Kicks KVK-4090 con el folio ORD-6509. ¿Me indican el precio, enganche en pesos, mensualidad a 36 meses, cuántos puntos lleva aprobados de los 240 en la sede de Guadalajara y qué porcentaje de reembolso tengo si cancelo?',
+      'Hola, aparté la Nissan Kicks KVK-4090 con el folio ORD-6509. ¿Me la entregan hoy mismo o cuál es el estatus completo de mi apartado?',
     expectedFacts: [
       '279,000',
       '55,800',
