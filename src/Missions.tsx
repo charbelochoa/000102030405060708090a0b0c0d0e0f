@@ -13,10 +13,11 @@ import {
 import { fileTypes } from '../shared/file-types'
 import { ArtifactPanel } from './Lab'
 import { money, stopLabels } from '../shared/catalog'
-import type { Attachment, Run } from '../shared/types'
+import type { Attachment, Coordination, Run } from '../shared/types'
 import { api, formatTokens, shortDate, useWorkspace } from './lib'
-import { Empty, Modal, ProviderMark, SectionTitle, Status } from './components'
+import { DownloadLink, Empty, Modal, ProviderMark, SectionTitle, Status } from './components'
 import { ImprovementChart } from './Charts'
+import { TeamBoard } from './TeamBoard'
 
 export function NewMission({
   open,
@@ -31,6 +32,7 @@ export function NewMission({
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState('auto')
   const [reviewer, setReviewer] = useState('auto')
+  const [coordination, setCoordination] = useState<Coordination>('orchestrated')
   const [files, setFiles] = useState<Attachment[]>([])
   const [busy, setBusy] = useState(false)
   const [budget, setBudget] = useState('0.50')
@@ -46,6 +48,7 @@ export function NewMission({
         prompt,
         model,
         reviewer,
+        coordination,
         attachments: files,
         budget: Number(budget),
         maxIterations: iterations,
@@ -132,6 +135,16 @@ export function NewMission({
         </label>
         <div className="form-grid">
           <label>
+            Organización del equipo
+            <select
+              value={coordination}
+              onChange={(e) => setCoordination(e.target.value as Coordination)}
+            >
+              <option value="orchestrated">Con orquestador</option>
+              <option value="autonomous">Equipo autónomo · sin orquestador LLM</option>
+            </select>
+          </label>
+          <label>
             Agente constructor
             <select value={model} onChange={(e) => setModel(e.target.value)}>
               <option value="auto">Router automático</option>
@@ -146,6 +159,8 @@ export function NewMission({
             Agente revisor
             <select value={reviewer} onChange={(e) => setReviewer(e.target.value)}>
               <option value="auto">Automático según la tarea</option>
+              <option value="same">Mismo modelo constructor (1 sola API / 1 LLM)</option>
+              <option value="none">Sin revisor (1 pasada)</option>
               {settings?.models.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -271,6 +286,12 @@ export function MissionDetail({ run, onClose }: { run: Run | null; onClose: () =
             ))}
           </div>
           <div className="detail-body">
+            <p className="muted">
+              {current.coordination === 'autonomous'
+                ? 'Equipo autónomo · sin orquestador LLM'
+                : 'Con orquestador'}
+            </p>
+            {current.coordination === 'autonomous' && <TeamBoard tasks={current.tasks || []} />}
             {tab === 'result' && (
               <>
                 <div className="eyebrow">OBJETIVO</div>
@@ -375,10 +396,10 @@ export function Missions({ onNew, onSelect }: { onNew: () => void; onSelect: (ru
   return (
     <>
       <SectionTitle title="Misiones">
-        <a className="button" href="/api/export" download>
+        <DownloadLink path="/export" filename="aeris-export.json">
           <ArrowDownToLine size={14} />
           Exportar
-        </a>
+        </DownloadLink>
         <button className="button primary" onClick={onNew}>
           <Plus size={15} />
           Nueva misión

@@ -416,6 +416,7 @@ export function Phone() {
                 Supervisor RSI (revisor)
                 <select value={reviewer} onChange={(e) => setReviewer(e.target.value)}>
                   <option value="auto">Automático (diálogo constructor + supervisor)</option>
+                  <option value="same">Mismo modelo constructor (1 sola API / 1 LLM)</option>
                   <option value="none">Sin revisor (1 pasada)</option>
                   {available.map((m) => (
                     <option key={m.id} value={m.id}>

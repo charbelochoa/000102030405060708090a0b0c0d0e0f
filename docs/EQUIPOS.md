@@ -2,7 +2,7 @@
 
 Cada misión elige `coordination: orchestrated | autonomous`. Las misiones y conversaciones anteriores conservan el comportamiento con orquestador. El modo por defecto es `orchestrated`.
 
-Ambos modos comparten una sola API, permisos, herramientas, recuperación acotada de notas, contabilidad por llamada, tarifas históricas, límite de coste y cancelación. Las políticas y experimentos RSI existentes se conservan. El nuevo modo no promueve políticas automáticamente ni cambia los pesos de un modelo.
+Ambos modos comparten una sola API, permisos, herramientas, recuperación acotada de notas, contabilidad por llamada, tarifas históricas, límite de coste y cancelación. Las políticas y experimentos RSI existentes se conservan. El nuevo modo no promueve políticas automáticamente ni cambia los pesos de un modelo. Para ejecutar todos los roles multiagente (constructor/resolver, supervisor/revisor y subagentes) con **una sola llave de API y un único modelo LLM**, consulta `docs/UNA_SOLA_API.md` (`reviewer: "same"`).
 
 ## Con orquestador
 

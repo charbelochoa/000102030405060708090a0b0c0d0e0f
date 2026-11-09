@@ -22,7 +22,7 @@ for (const key of [
 ])
   delete process.env[key]
 const { startServer } = await import('../server/index')
-const { cliToken, data } = await import('../server/store')
+const { cliToken, data, setKey } = await import('../server/store')
 const { groupByLessons, buildRsiTrace, computePerformanceTrend, renderAsciiPerformanceChart } =
   await import('../shared/phone')
 const { retrieveMandatoryContext } = await import('../server/brain')
@@ -32,11 +32,13 @@ const headers = { Authorization: `Bearer ${cliToken}`, 'Content-Type': 'applicat
 
 after(async () => {
   const delivered = () =>
-    data.runs.every((r) =>
-      data.events.some(
-        (e) => e.runId === r.id && ['phone.failed', 'phone.delivered'].includes(e.type)
+    (data.phone || [])
+      .flatMap((c) => c.runIds)
+      .every((runId) =>
+        data.events.some(
+          (e) => e.runId === runId && ['phone.failed', 'phone.delivered'].includes(e.type)
+        )
       )
-    )
   for (let i = 0; i < 100 && !delivered(); i++) await delay(20)
   assert.ok(
     delivered(),
@@ -329,4 +331,109 @@ test('context brain records cycle mistakes and improvements and renders linear p
   )
   assert.match(ascii, /Pipeline RSI: \[#{28}\] 100% \(7\/7\)/)
   assert.match(ascii, /mejora lineal consistente/)
+})
+
+test('single API and single LLM model runs multi-agent RSI loop, subagent and cognitive escalation', async () => {
+  const originalFetch = globalThis.fetch
+  const savedModels = structuredClone(data.settings.models)
+  const savedRouter = data.settings.router
+  data.settings.router = false
+  const singleModel = {
+    ...savedModels.find((m) => m.provider === 'openai')!,
+    id: 'single-llm-hackathon',
+    name: 'Single LLM Hackathon',
+    tier: 'low' as const
+  }
+  data.settings.models = [singleModel]
+  setKey('openai', 'hackathon-single-key')
+  const usedModels: string[] = []
+  const systemPrompts: string[] = []
+  let reviewCall = 0
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('api.openai.com')) return originalFetch(url, init)
+    const body = JSON.parse(String(init?.body))
+    usedModels.push(body.model)
+    const sys = String(body.messages[0]?.content || '')
+    systemPrompts.push(sys)
+    if (sys.includes('independent reviewer')) {
+      reviewCall++
+      return Response.json({
+        model: body.model,
+        choices: [
+          {
+            message: {
+              content:
+                reviewCall === 1
+                  ? JSON.stringify({
+                      score: 68,
+                      verdict: 'Falta verificar política de garantía.',
+                      improvements: 'Añadir validación de garantía de 1 año.',
+                      selfCheck: 'Omití la cláusula de garantía.',
+                      mistake: 'No consultó la garantía.',
+                      leaderAction: 'spawn_subagent',
+                      subagent: {
+                        role: 'auditor-garantia',
+                        tier: 'medium',
+                        iterations: 1,
+                        reasoning: 'Verificar condiciones de garantía con el mismo LLM.'
+                      }
+                    })
+                  : JSON.stringify({
+                      score: 95,
+                      verdict: 'Validado con el apoyo del subagente.',
+                      improvements: 'Ninguna.',
+                      selfCheck: 'Autochequeo completo.',
+                      mistake: 'Sin error crítico en este ciclo.',
+                      leaderAction: 'accept'
+                    })
+            }
+          }
+        ],
+        usage: { prompt_tokens: 30, completion_tokens: 15 }
+      })
+    }
+    if (sys.includes('specialized subagent')) {
+      return Response.json({
+        model: body.model,
+        choices: [{ message: { content: 'Garantía confirmada: 12 meses contra defectos.' } }],
+        usage: { prompt_tokens: 20, completion_tokens: 10 }
+      })
+    }
+    return Response.json({
+      model: body.model,
+      choices: [{ message: { content: 'Respuesta de candidato con un solo LLM.' } }],
+      usage: { prompt_tokens: 25, completion_tokens: 12 }
+    })
+  }
+  try {
+    const created = (
+      await call('/runs', {
+        prompt: 'Revisa el código y las condiciones de garantía del módulo.',
+        model: 'single-llm-hackathon',
+        reviewer: 'same',
+        maxIterations: 3,
+        target: 90
+      })
+    ).value
+    let run = created
+    for (let i = 0; i < 80 && ['running', 'queued'].includes(run.status); i++) {
+      await delay(10)
+      run = (await call(`/runs/${created.id}`)).value
+    }
+    assert.equal(run.status, 'completed', run.error)
+    assert.equal(run.iterations.length, 2)
+    assert.ok(usedModels.every((m) => m === 'single-llm-hackathon'))
+    assert.equal(usedModels.length, 5)
+    assert.equal(run.iterations[0].tier, 'low')
+    assert.equal(run.iterations[1].tier, 'medium')
+    assert.equal(run.iterations[0].subagent?.model, 'single-llm-hackathon')
+    assert.ok(systemPrompts.some((s) => s.includes('Cognitive profile LOW')))
+    assert.ok(systemPrompts.some((s) => s.includes('Cognitive profile MEDIUM')))
+    assert.ok(systemPrompts.some((s) => s.includes('specialized subagent (auditor-garantia)')))
+  } finally {
+    globalThis.fetch = originalFetch
+    data.settings.models = savedModels
+    data.settings.router = savedRouter
+    setKey('openai', '')
+  }
 })

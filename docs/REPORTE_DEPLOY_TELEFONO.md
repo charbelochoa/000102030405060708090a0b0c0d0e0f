@@ -40,6 +40,9 @@ Documento técnico para el equipo y agentes colaboradores (Codex / Antigravity).
    - **Herramientas de runtime para el orquestador (`server/tools.ts`)**:
      - `configure_runtime`: permite ajustar `router`, `routerModel`, `optimizer`, `budget`, `maxIterations`, `target` y activar/desactivar `skills` cuando `allowWrites` está habilitado, dejando constancia en `[[Reglas de arquitectura y orquestación]]`.
      - `record_rsi_lesson`: permite registrar errores, mejoras o reglas directamente en los espacios obligatorios del Cerebro de contexto.
+   - **Modo de Una Sola API y Un Solo Modelo LLM (`reviewer: "same"` · `docs/UNA_SOLA_API.md`)**:
+     - Pensado para hackathon o entornos con una única credencial y un solo modelo LLM.
+     - Todos los agentes (`orquestador/tablero`, `constructor/resolver`, `supervisor/líder RSI` y `subagentes`) operan sobre el mismo modelo LLM con contextos separados y escalado progresivo por perfil cognitivo (`low` -> `medium` -> `high` -> `reasoning`).
 
 4. **Gráficas de desempeño, linealidad ($R^2$) y barras de progreso (Terminal CLI y Web)**
    - `computePerformanceTrend`, `renderAsciiProgressBar` y `renderAsciiPerformanceChart` en `shared/phone.ts` calculan la recta de regresión lineal ($y = mx + b$), pendiente por ciclo ($m$) y coeficiente de determinación ($R^2$) sobre las evaluaciones de cada ciclo, indicando explícitamente el tamaño de muestra y que las puntuaciones provienen del modelo revisor.
