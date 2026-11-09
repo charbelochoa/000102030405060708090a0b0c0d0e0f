@@ -1,4 +1,4 @@
-import { runCampaign } from '../shared/campaign'
+﻿import { runCampaign } from '../shared/campaign'
 import 'dotenv/config'
 import { Command } from 'commander'
 import chalk from 'chalk'
@@ -16,6 +16,7 @@ import {
   rsiStages,
   type RsiTraceLine
 } from '../shared/phone'
+import { detectKavakScenario } from '../shared/kavak'
 import { chartSvg } from '../shared/chart'
 import { fileTypes } from '../shared/file-types'
 import { money, providers, stopLabels } from '../shared/catalog'
@@ -512,164 +513,125 @@ program
   .command('context')
   .description('Páginas del cerebro de contexto')
   .action(async () => print(await request('/context')))
-async function runAndPrintThreeStepRsiDemo(runFresh = false) {
-  if (runFresh) {
-    await request('/kavak/benchmark', {
-      coordination: 'orchestrated',
-      reviewer: 'same',
-      maxIterations: 2,
-      resetPrevious: true
-    })
+async function lastEvaluation(runId: string) {
+  const run = await request<Run>(`/runs/${runId}`)
+  const measured = run.iterations.filter((i) => i.measurement?.evaluation)
+  const it = measured.at(-1)
+  return { run, it, ev: it?.measurement?.evaluation as any }
+}
+
+function residualLines(ev: any, onlyFailures: boolean) {
+  return (ev?.numericResiduals || [])
+    .filter((r: any) => !onlyFailures || r.relativeError > 0)
+    .map(
+      (r: any) =>
+        `      ${r.relativeError > 0 ? '[FALLA]' : '[OK]   '} ${String(r.field).padEnd(22)} esperado=${String(r.expected).padStart(7)} observado=${String(r.observed ?? 'OMITIDO').padStart(7)} error=${(r.relativeError * 100).toFixed(0)}%`
+    )
+}
+
+async function runAndPrintThreeStepRsiDemo(options: { fresh?: boolean; model?: string }) {
+  const box = (title: string) =>
+    '+' + '='.repeat(94) + '+\n| ' + title.padEnd(93) + '|\n+' + '='.repeat(94) + '+'
+  let list = await request<any[]>('/rules/experiments')
+  if (options.fresh || !list.length) {
+    const snapshot = await request<Snapshot>('/snapshot')
+    const usable = snapshot.settings.models.filter((m) =>
+      snapshot.settings.providers.some((p) => p.id === m.provider && p.enabled && p.hasKey)
+    )
+    const model =
+      options.model ||
+      (usable.find((m) => m.provider === 'google') || usable[0])?.id
+    if (!model) throw new Error('Conecta un proveedor o indica --model. No se inventan resultados.')
+    print(chalk.gray(`Iniciando experimento real con ${model} (1 caso de desarrollo + casos de evaluación pareados)...`))
+    const started = await request<any>('/rules/experiments', { model, budget: 0.35 })
+    for (let i = 0; i < 400; i++) {
+      await delay(3000)
+      const current = (await request<any[]>('/rules/experiments')).find((e) => e.id === started.id)
+      if (process.stdout.isTTY) process.stdout.write(`\r\x1b[2K  ${current?.phase} · ${current?.status}`)
+      if (current && current.status !== 'running') break
+    }
+    if (process.stdout.isTTY) process.stdout.write('\n')
+    list = await request<any[]>('/rules/experiments')
   }
-  let rep = await request<any>('/kavak/evals')
-  if (!rep.points?.length) {
-    await request('/kavak/benchmark', {
-      coordination: 'orchestrated',
-      reviewer: 'same',
-      maxIterations: 2,
-      resetPrevious: true
-    })
-    rep = await request<any>('/kavak/evals')
-  }
-  const kavakRows = (rep.evalRows || []).filter((r: any) => Boolean(r.kavakEval))
-  const c1 = kavakRows[0]
-  const c4 = kavakRows.at(-1)
+  const exp = list[0]
   print(chalk.green(banner))
-  print(
-    chalk.yellow(
-      '\n+==============================================================================================+\n' +
-        '| PASO 1: DEMOSTRACION DEL PROBLEMA Y FALLA VISIBLE EN AGENTE BASE (v0 - SIN LECCIONES RSI)   |\n' +
-        '+==============================================================================================+'
-    )
-  )
-  print(
-    chalk.white(
-      '  Frase del problema:\n' +
-        '    "Cuando un cliente consulta su expediente Kavak (ORD-9044), el agente base (v0) responde\n' +
-        '     de forma incompleta omitiendo limites contractuales (7 dias / 300 km), km recorridos (620 km)\n' +
-        '     y dias de garantia (90 dias) exigidos por la auditoria estadistica de la base de datos."'
-    )
-  )
-  if (c1 && c1.kavakEval) {
-    const kv1 = c1.kavakEval
-    print(chalk.red(`\n  [Ejecucion v0 sobre ORD-9044 · 0 lecciones en Cerebro de Contexto]`))
-    print(
-      chalk.red(
-        `    Resultado v0 (ROMPE AUDITORIA): Score=${c1.score}/100 | RMSE=${kv1.rmse.toFixed(4)} | MAPE=${kv1.mape.toFixed(2)}% | F1=${kv1.f1.toFixed(2)} | Aceptado=NO`
-      )
-    )
-    print(
-      chalk.white(
-        `    Donde rompe (Residuales e_i = |y_hat - y| / |y| > 0 en evaluateKavakResponse):`
-      )
-    )
-    for (const nr of kv1.numericResiduals || []) {
-      const statusTag = nr.relativeError === 0 ? '[OK]   ' : '[FALLA]'
-      print(
-        `      ${statusTag} ${nr.field.padEnd(22, ' ')} (${nr.label.padEnd(28, ' ')}): Esperado=${String(nr.expected).padStart(7, ' ')} | Observado=${String(nr.observed ?? 'OMITIDO').padStart(7, ' ')} | Error=${(nr.relativeError * 100).toFixed(0)}%`
-      )
-    }
-    print(chalk.gray(`    Hechos omitidos en v0: ${(kv1.missingFacts || []).join(', ')}`))
-    print(
-      chalk.gray(
-        `    Resultado esperado: Score >= 85/100, RMSE <= 0.1500, 7/7 variables exactas citadas de query_kavak_db.`
-      )
-    )
-  }
+  print(chalk.gray(`Experimento ${exp.id} · modelo ${exp.model} · estado ${exp.status}`))
+  if (exp.error) print(chalk.red(`Error registrado: ${exp.error}`))
 
-  print(
-    chalk.cyan(
-      '\n+==============================================================================================+\n' +
-        '| PASO 2: QUE APRENDIO EL AGENTE, QUE CAMBIO EN EL SUCESOR (v1) Y EJECUCION DEL SUCESOR       |\n' +
-        '+==============================================================================================+'
-    )
-  )
+  print(chalk.yellow('\n' + box('PASO 1: PROBLEMA, CASO EJECUTADO Y FALLA VISIBLE (predecesor, reglas base)')))
+  if (!exp.trainingRunId) {
+    print('Sin caso de desarrollo ejecutado todavía.')
+    return
+  }
+  const training = await lastEvaluation(exp.trainingRunId)
+  const trainingScenario = detectKavakScenario(training.run.title + '\n' + training.run.prompt)
   print(
     chalk.white(
-      '  1) Que aprendio (Persistido en .aeris/context/ y [[Espacio de errores y mejoras RSI]]):\n' +
-        '     "REGLA ESTADISTICA KAVAK: Para lograr RMSE=0.000 y F1=1.00, en toda consulta de expediente\n' +
-        '      ORD-... usa query_kavak_db y cita obligatoriamente: precio en MXN, monto de enganche en MXN,\n' +
-        '      mensualidad exacta en MXN, plazo en meses, dias/km desde entrega vs limite 7 dias / 300 km,\n' +
-        '      puntos aprobados de inspeccion sobre 240, garantia activa y porcentaje de reembolso (100%)."\n\n' +
-        '  2) Que parte del sucesor (v1) cambio por la leccion:\n' +
-        '     - Archivo: server/brain.ts -> retrieveMandatoryContext() + server/engine.ts -> runWorker()\n' +
-        '     - Cambio en el Sucesor (Diff del System Prompt antes de llamar al LLM):\n' +
-        '       [-] v0 System Prompt: Solo instrucciones base + tools (0 reglas de dominio en memoria)\n' +
-        '       [+] v1 System Prompt: Inyecta [[Espacio de errores y mejoras RSI]] + [[Lecciones de atencion]]\n' +
-        '                             con los residuales estadisticos previos y la regla obligatoria.'
+      `  Problema (una frase): el agente con reglas base puede entregar una respuesta que omite datos exigidos de la BD.\n  Caso: ${training.run.title}\n  Mensaje del cliente: ${trainingScenario?.customerMessage ?? '(no identificado)'}`
     )
   )
-  if (c4 && c4.kavakEval) {
-    const kv4 = c4.kavakEval
-    print(chalk.green(`\n  3) Sucesor (v1) ejecutando su tarea (${c4.title}):`))
-    print(
-      chalk.green(
-        `     Resultado v1 (APROBADO): Score=${c4.score}/100 | RMSE=${kv4.rmse.toFixed(4)} | MAPE=${kv4.mape.toFixed(2)}% | F1=${kv4.f1.toFixed(2)} | Decision Lider=${c4.leaderDecision}`
-      )
-    )
-    for (const nr of kv4.numericResiduals || []) {
-      print(
-        `      [OK]    ${nr.field.padEnd(22, ' ')} (${nr.label.padEnd(28, ' ')}): Esperado=${String(nr.expected).padStart(7, ' ')} | Observado=${String(nr.observed).padStart(7, ' ')} | Error=0%`
-      )
-    }
+  if (exp.status === 'no_failure_observed') {
+    print(chalk.green('  Resultado: no se observó fallo con este modelo; no se inventa una lección.'))
+    return
   }
+  const failed = training.run.iterations.find((i) => i.index === exp.failureCycle)
+  const failedEv = failed?.measurement?.evaluation as any
+  print(chalk.red(`\n  Ciclo que rompe: ${exp.failureCycle} · score=${failed?.score}/100${failedEv ? ` · RMSE=${failedEv.rmse.toFixed(4)} · MAPE=${failedEv.mape.toFixed(2)}% · F1=${failedEv.f1.toFixed(2)}` : ''}`))
+  print(chalk.white('  Dónde rompe (esperado vs observado):'))
+  for (const l of residualLines(failedEv, true)) print(l)
+  if (failedEv?.missingFacts?.length) print(chalk.gray(`  Hechos omitidos: ${failedEv.missingFacts.join(' | ')}`))
+  print(chalk.gray(`  Esperado: score >= 95 con todas las variables exactas.`))
+  print(chalk.white('  Salida del agente en ese ciclo (registro):'))
+  print(chalk.gray('    ' + String(failed?.candidate || '').slice(0, 700).replace(/\n/g, '\n    ')))
 
-  print(
-    chalk.magenta(
-      '\n+==============================================================================================+\n' +
-        '| PASO 3: COMPARATIVA v0 vs SUCESOR SOBRE LOS MISMOS CASOS Y ATRIBUCION CAUSAL DE LA LECCION  |\n' +
-        '+==============================================================================================+'
+  print(chalk.cyan('\n' + box('PASO 2: QUÉ APRENDIÓ, QUÉ CAMBIÓ EN EL SUCESOR Y EL SUCESOR TRABAJANDO')))
+  print(chalk.white(`  Lección registrada por la revisión:\n    ${String(exp.lesson || '(vacía)').replace(/\n/g, '\n    ')}`))
+  print(chalk.white(`\n  Reglas del sucesor (hash ${String(exp.baselineHash).slice(0, 8)} -> ${String(exp.successorHash || '').slice(0, 8)}):`))
+  const added = String(exp.successorRules || '').replace(String(exp.baselineRules || ''), '').trim()
+  print(chalk.green('    [+] ' + added.replace(/\n/g, '\n    [+] ')))
+  const firstPair = exp.pairs.find((p: any) => p.successorRunId)
+  if (firstPair) {
+    const s = await lastEvaluation(firstPair.successorRunId)
+    print(chalk.green(`\n  Sucesor ejecutando: ${s.run.title}`))
+    print(chalk.gray('    ' + String(s.it?.candidate || s.run.result || '').slice(0, 700).replace(/\n/g, '\n    ')))
+  } else print(chalk.gray('  El sucesor aún no ejecuta casos de evaluación.'))
+
+  print(chalk.magenta('\n' + box('PASO 3: MISMOS CASOS DE EVALUACIÓN, PREDECESOR vs SUCESOR')))
+  print('  CASO       | PREDECESOR score/RMSE | SUCESOR score/RMSE | DELTA')
+  const deltas: number[] = []
+  for (const pair of exp.pairs) {
+    if (!pair.successorRunId || !pair.predecessorRunId) continue
+    const [a, b] = await Promise.all([lastEvaluation(pair.predecessorRunId), lastEvaluation(pair.successorRunId)])
+    const sa = a.it?.score ?? 0
+    const sb = b.it?.score ?? 0
+    deltas.push(sb - sa)
+    print(
+      `  ${String(pair.scenarioId).padEnd(10)} | ${String(sa).padStart(5)} / ${a.ev ? a.ev.rmse.toFixed(3) : 'n/d'}      | ${String(sb).padStart(5)} / ${b.ev ? b.ev.rmse.toFixed(3) : 'n/d'}     | ${sb - sa >= 0 ? '+' : ''}${sb - sa}`
     )
-  )
-  print(
-    '+------------+--------------------------+-------------------+-------------------+-------------------+\n' +
-      '| EXPEDIENTE | CASO DE EVALUACION BD    | v0 (SIN LECCION)  | SUCESOR CON RSI   | MEJORA NETA (RSI) |\n' +
-      '+------------+--------------------------+-------------------+-------------------+-------------------+'
-  )
-  const baselineByCase = [
-    { order: 'ORD-9044', desc: 'Devolucion Mazda 3      ', v0Score: 33, v0Rmse: 0.7303 },
-    { order: 'ORD-8821', desc: 'Garantia VW Tiguan      ', v0Score: 31, v0Rmse: 0.7454 },
-    { order: 'ORD-7712', desc: 'Financiamiento Corolla  ', v0Score: 29, v0Rmse: 0.7638 },
-    { order: 'ORD-6509', desc: 'Inspeccion 240pts Kicks ', v0Score: 36, v0Rmse: 0.6936 }
-  ]
-  for (let i = 0; i < baselineByCase.length; i++) {
-    const b = baselineByCase[i]
-    const row = kavakRows[i]
-    const sScore = row ? row.score : 100
-    const sRmse = row?.kavakEval ? row.kavakEval.rmse : 0
-    const v0Cell = `${String(b.v0Score).padStart(3, ' ')}pts RMSE=${b.v0Rmse.toFixed(2)}`
-    const sCell = `${String(sScore).padStart(3, ' ')}pts RMSE=${sRmse.toFixed(2)}`
-    const dCell = `+${String(sScore - b.v0Score).padStart(2, ' ')}pts (-${(((b.v0Rmse - sRmse) / b.v0Rmse) * 100).toFixed(0)}% err)`
-    print(`| ${b.order.padEnd(10, ' ')} | ${b.desc} | ${v0Cell} | ${sCell} | ${dCell.padEnd(17, ' ')} |`)
   }
-  print(
-    '+------------+--------------------------+-------------------+-------------------+-------------------+\n' +
-      '| CONSOLIDADO v1 (Con las 3 reglas RSI activas sobre los 4 expedientes): 100/100 en 4/4 (RMSE=0.00) |\n' +
-      '+---------------------------------------------------------------------------------------------------+'
-  )
+  if (deltas.length) {
+    const mean = deltas.reduce((x, y) => x + y, 0) / deltas.length
+    print(chalk.white(`  Delta medio: ${mean >= 0 ? '+' : ''}${mean.toFixed(1)} pts en ${deltas.length} casos pareados · costo del experimento: ${money(exp.totalCostNano)} USD`))
+  }
   print(
     chalk.white(
-      '\n  Explicacion de atribucion causal (Por que sabemos que la mejora proviene de la leccion RSI):\n' +
-        '    1. Modelo constante: Ambas versiones (v0 y v1) usan exactamente el mismo modelo base (low tier).\n' +
-        '    2. Herramientas y datos constantes: Ambas consultan la misma tabla en memoria (query_kavak_db).\n' +
-        '    3. Prueba de ablacion: Al desactivar las paginas de leccion en .aeris/context/ (resetPrevious),\n' +
-        '       el desempeno regresa inmediatamente a Score=33/100 y RMSE=0.7303. Al activar las lecciones\n' +
-        '       en retrieveMandatoryContext(), el error cae linealmente (R^2=0.997) hasta RMSE=0.0000.'
+      '\n  Atribución (lo que el diseño sí permite afirmar):\n' +
+        `    - Mismo modelo (${exp.model}), mismas herramientas y mismos casos; solo cambian las reglas (hash base vs sucesor).\n` +
+        '    - La lección se derivó del caso de desarrollo y se evalúa en casos distintos, para no medir memorización.\n' +
+        '    - Limitación: una sola ejecución por caso; no es significancia estadística. Si el delta es <= 0, la lección no se atribuye como mejora.'
     )
   )
-  if (rep.points?.length) {
-    print(chalk.cyan('\n' + renderAsciiPerformanceChart(rep.points, 7, 7)))
-  }
 }
 
 program
   .command('demo-rsi')
   .description(
-    'Ejecutar demostración estructurada en 3 pasos: 1) Falla visible en v0, 2) Qué aprendió y cambió en el sucesor v1, 3) Comparativa sobre los mismos casos y atribución causal'
+    'Demostración en 3 pasos con datos medidos: falla visible, lección y sucesor, comparación pareada sobre los mismos casos'
   )
-  .option('--fresh', 'Reiniciar y correr en vivo los 4 ciclos antes de mostrar el reporte')
+  .option('--fresh', 'Ejecutar un experimento nuevo (llama al modelo real y consume tokens)')
+  .option('--model <id>', 'Modelo para el experimento')
   .action(async (options) => {
-    await runAndPrintThreeStepRsiDemo(Boolean(options.fresh))
+    await runAndPrintThreeStepRsiDemo({ fresh: Boolean(options.fresh), model: options.model })
   })
 program
   .command('evals')
@@ -944,7 +906,7 @@ program
           return
         }
         if (text === '/demo') {
-          await runAndPrintThreeStepRsiDemo(false)
+          await runAndPrintThreeStepRsiDemo({})
           return
         }
         if (text === '/evals') {
