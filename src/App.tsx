@@ -25,6 +25,7 @@ import {
   Search,
   Settings2,
   Shield,
+  Smartphone,
   Sparkles,
   Terminal,
   Users,
@@ -39,6 +40,7 @@ import { Factory } from './Factory'
 import { Configuration, Models, Skills } from './Configuration'
 import { Agents, Files, TerminalView } from './WorkspaceViews'
 import { Lab } from './Lab'
+import { Phone } from './Phone'
 import { PixelStudio } from './Factory'
 import { Evolution } from './Evolution'
 import { ContextBrain } from './ContextBrain'
@@ -55,6 +57,7 @@ const navigation = [
   { id: 'metrics', label: 'Métricas y progreso', icon: Activity },
   { id: 'evolution', label: 'Evolución del sistema', icon: GitBranch },
   { id: 'factory', label: 'Estudio de agentes', icon: FactoryIcon },
+  { id: 'phone', label: 'Teléfono de clientes', icon: Smartphone },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'files', label: 'Archivos', icon: FileCode2 },
   { id: 'skills', label: 'Skills', icon: Sparkles },
@@ -345,6 +348,7 @@ export function App() {
             </header>
             <div className="app-content">
               {view === 'lab' && <Lab />}
+              {view === 'phone' && <Phone />}
               {view === 'overview' && (
                 <Dashboard
                   onNew={() => setNewMission(true)}

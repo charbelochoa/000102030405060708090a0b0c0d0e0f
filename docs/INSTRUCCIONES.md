@@ -35,3 +35,9 @@ Desde el resultado de una misión o análisis, **Validar para memoria** contrast
 El protocolo, los datos requeridos y las condiciones para promover o restaurar una política están en [el ensayo del hackathon](HACKATHON.md). Las mediciones empiezan vacías en cada espacio.
 
 En **Evolución → Campaña de aprendizaje**, ejecuta varias propuestas con presupuesto y límite de generaciones. **Generaciones** permite inspeccionar aciertos, tokens, llamadas, coste y latencia por tarea. Al evaluar el test se sella el ciclo. Una vez medidos todos los casos reservados en ambas ramas, **Nuevo ciclo** abre otra evaluación y conserva la experiencia anterior. [Comandos y reproducción](HACKATHON.md) La opción **Comparar equipos de 1, 2 y 3 agentes** mide los tres flujos en desarrollo antes de proponer una configuración.
+
+## Teléfono de clientes
+
+Abre `/app#phone`. Escribe como cliente y el agente responde como la empresa con el contexto recuperado del Cerebro de contexto. Carga allí los datos reales de la empresa (políticas, precios, plazos); sin ellos el agente solo puede decir que no tiene el dato.
+
+Califica cada conversación como resuelta o no y añade una lección. La lección se recupera en conversaciones parecidas. La tabla de resultados agrupa las conversaciones calificadas por las lecciones disponibles al iniciar. Son mediciones de pocas conversaciones calificadas por una persona: no demuestran mejora hasta tener una muestra mayor y casos de control.

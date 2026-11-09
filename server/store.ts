@@ -22,6 +22,7 @@ import type {
 } from '../shared/types'
 import type { Study } from '../shared/analysis'
 import type { ContextPage } from '../shared/brain'
+import type { PhoneConversation } from '../shared/phone'
 
 export const workspace = resolve(process.env.AERIS_WORKSPACE || process.cwd())
 export const dataDir = resolve(process.env.AERIS_DATA_DIR || join(workspace, '.aeris'))
@@ -49,6 +50,7 @@ interface Data {
   studies?: Record<string, Study>
   contextPages?: ContextPage[]
   usageLedger?: UsageRecord[]
+  phone?: PhoneConversation[]
 }
 
 const skill = (

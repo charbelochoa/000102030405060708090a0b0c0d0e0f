@@ -25,6 +25,7 @@ import {
 import { listFiles, readWorkspaceFile, searchFiles, worktree, writeWorkspaceFile } from './tools'
 import { defaults, providers } from '../shared/catalog'
 import { registerLab } from './lab-api'
+import { registerPhone } from './phone'
 import { fileSchema } from '../shared/analysis'
 import { backlinks, listPages, retrieveContext, savePage } from './brain'
 
@@ -81,7 +82,12 @@ export function createApp() {
       return
     }
     const origin = req.headers.origin
-    const allowedOrigins = [new URL(publicUrl).origin, `http://${req.headers.host}`]
+    const configuredUrl = new URL(publicUrl)
+    const allowedOrigins = [configuredUrl.origin, `http://${req.headers.host}`]
+    if (['localhost', '127.0.0.1'].includes(configuredUrl.hostname)) {
+      configuredUrl.hostname = configuredUrl.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
+      allowedOrigins.push(configuredUrl.origin)
+    }
     if (origin && !allowedOrigins.includes(origin)) {
       res.status(403).json({ error: 'Origen no permitido.' })
       return
@@ -414,6 +420,7 @@ export function createApp() {
     )
   )
   registerLab(app)
+  registerPhone(app)
   app.get('/api/context', requireUser, (req, res) => {
     res.json({ pages: listPages(owner(req)) })
   })
