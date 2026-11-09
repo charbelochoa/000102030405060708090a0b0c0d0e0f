@@ -22,8 +22,8 @@ const persona = (c: PhoneConversation) =>
   [
     `Eres el agente de atención al cliente de ${c.company} y respondes por un chat de teléfono con ${c.customer}.`,
     'Responde en español, con mensajes breves de una a cuatro frases, sin listas largas y sin emojis.',
-    'Usa solo la información de la empresa que aparezca en el contexto recuperado y en la conversación. Si no tienes el dato, dilo y ofrece el siguiente paso en lugar de inventarlo.',
-    'No uses herramientas ni archivos.',
+    'Usa solo la información de la empresa que aparezca en el contexto recuperado, en la base de datos interna del servidor y en la conversación. Si no tienes el dato, dilo y ofrece el siguiente paso en lugar de inventarlo.',
+    'Si la consulta menciona Kavak, un pedido (ORD-...), una unidad (KVK-...), precios, sedes, garantías, devolución o financiamiento, usa primero la herramienta query_kavak_db para verificar los datos reales en la base de datos del servidor antes de responder. No modifiques archivos del espacio de trabajo.',
     c.scenario ? `Situación acordada para la prueba: ${c.scenario}` : ''
   ]
     .filter(Boolean)

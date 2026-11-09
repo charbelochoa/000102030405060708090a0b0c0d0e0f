@@ -26,6 +26,7 @@ import { listFiles, readWorkspaceFile, searchFiles, worktree, writeWorkspaceFile
 import { defaults, providers } from '../shared/catalog'
 import { registerLab } from './lab-api'
 import { registerPhone } from './phone'
+import { registerKavak } from './kavak'
 import { discoverModels } from './providers'
 import { databaseStatus } from './realtime'
 import { fileSchema } from '../shared/analysis'
@@ -478,6 +479,7 @@ export function createApp() {
   )
   registerLab(app)
   registerPhone(app)
+  registerKavak(app)
   app.get('/api/context', requireUser, (req, res) => {
     const id = owner(req)
     res.json({

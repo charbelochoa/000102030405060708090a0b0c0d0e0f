@@ -471,6 +471,38 @@ program
   .description('Páginas del cerebro de contexto')
   .action(async () => print(await request('/context')))
 program
+  .command('kavak')
+  .description('Consultar la base de datos Kavak del servidor o ejecutar la simulación RSI de 4 ciclos')
+  .option('--table <tableName>', 'all, vehicles, orders o policies', 'all')
+  .option('--query <text>', 'Texto o folio a buscar (ej. ORD-9044, KVK-1042, Santa Fe)', '')
+  .option('--simulate', 'Ejecutar la batería de 4 ciclos de automejora sobre la BD Kavak')
+  .option('--coordination <mode>', 'orchestrated o autonomous', 'orchestrated')
+  .action(async (options) => {
+    if (options.simulate) {
+      const res = await request<any>('/kavak/simulate', {
+        coordination: options.coordination,
+        singleApi: true,
+        resetPreviousSimulation: true
+      })
+      print(chalk.green(banner))
+      print(chalk.bold(`\nSimulación de automejora Kavak (${res.coordination} · 1 sola API: ${res.singleApi})`))
+      print(chalk.gray(res.note))
+      print(chalk.cyan('\n' + res.progressBar))
+      print(chalk.cyan('\n' + res.asciiChart))
+      print(chalk.yellow('\nDetalle por ciclo y verificación contra BD Kavak:'))
+      for (const c of res.cycles) {
+        print(
+          `  [Ciclo ${c.cycle}] ${c.orderId} (${c.stockId}) · ${c.model} (${c.tier}) · lecciones previas=${c.lessonsAtStart} · registros BD=${c.dbRecordsMatched}\n    Inicial: ${c.initialEvaluation.score}/100 (cobertura ${c.initialEvaluation.factCoverage}%) -> Final: ${c.finalEvaluation.score}/100 · Decisión líder: ${c.leaderDecision}`
+        )
+      }
+      return
+    }
+    const db = await request<any>(
+      `/kavak/db?table=${encodeURIComponent(options.table)}&q=${encodeURIComponent(options.query)}`
+    )
+    print(db)
+  })
+program
   .command('metrics')
   .description('Gráfica ASCII de desempeño, linealidad y bitácora RSI en terminal')
   .option('--run <id>', 'Filtrar por misión')
@@ -637,8 +669,22 @@ program
         }
         if (text === '/help') {
           print(
-            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /metrics · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
+            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /metrics · /kavak [simulate|consulta] · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
           )
+          return
+        }
+        if (text === '/kavak' || text.startsWith('/kavak ')) {
+          const arg = text.slice(6).trim()
+          if (arg === 'simulate') {
+            const res = await request<any>('/kavak/simulate', {
+              coordination: 'orchestrated',
+              singleApi: true,
+              resetPreviousSimulation: true
+            })
+            print(chalk.cyan(res.progressBar + '\n\n' + res.asciiChart))
+          } else {
+            print(await request(`/kavak/db?q=${encodeURIComponent(arg)}`))
+          }
           return
         }
         if (text === '/metrics') {

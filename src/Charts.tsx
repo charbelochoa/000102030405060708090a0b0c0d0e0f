@@ -4,19 +4,37 @@ import { computePerformanceTrend } from '../shared/phone'
 import type { Run } from '../shared/types'
 import { formatTokens } from './lib'
 
-export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?: boolean }) {
+export function ImprovementChart({
+  runs = [],
+  points: customPoints,
+  large = false
+}: {
+  runs?: Run[]
+  points?: { cycle: number; score: number }[]
+  large?: boolean
+}) {
   const id = useId().replace(/:/g, '')
   const [hovered, setHovered] = useState<number | null>(null)
   const valid = runs.filter((r) => r.iterations.length)
-  if (!valid.length) return <p className="empty-measurement">Sin evaluaciones del revisor.</p>
-  const count = Math.max(1, ...valid.map((r) => r.iterations.length))
-  const points = Array.from({ length: count }, (_, index) => {
-    const values = valid.filter((r) => r.iterations[index]).map((r) => r.iterations[index].score)
-    return {
-      index: index + 1,
-      value: values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0
-    }
-  })
+  if (!valid.length && (!customPoints || !customPoints.length))
+    return <p className="empty-measurement">Sin evaluaciones del revisor.</p>
+  const maxIter = valid.length ? Math.max(1, ...valid.map((r) => r.iterations.length)) : 1
+  const points = customPoints?.length
+    ? customPoints.map((p, idx) => ({ index: idx + 1, value: p.score }))
+    : maxIter === 1 && valid.length > 1
+      ? [...valid]
+          .reverse()
+          .map((r, idx) => ({ index: idx + 1, value: r.iterations.at(-1)!.score }))
+      : Array.from({ length: maxIter }, (_, index) => {
+          const values = valid
+            .filter((r) => r.iterations[index])
+            .map((r) => r.iterations[index].score)
+          return {
+            index: index + 1,
+            value: values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0
+          }
+        })
+  const count = Math.max(1, points.length)
   const width = 760,
     height = large ? 290 : 230
   const x = scaleLinear()
@@ -86,7 +104,7 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
         <text x={width - 20} y={y(target) - 7} textAnchor="end" className="target-label">
           objetivo {target.toFixed(0)}
         </text>
-        {valid.length > 0 && (
+        {(valid.length > 0 || (customPoints && customPoints.length > 0)) && (
           <>
             <path d={fill(points)!} fill={`url(#fill-${id})`} />
             <path

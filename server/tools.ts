@@ -6,6 +6,7 @@ import { workspace, dataDir, data, event, message, publicSettings, save } from '
 import { evidenceDefinitions, evidenceTool } from './evidence-tools'
 import { requiredContextSpaces } from '../shared/brain'
 import { listPages, savePage } from './brain'
+import { queryKavakDatabase } from './kavak'
 import type { Run } from '../shared/types'
 
 const exec = promisify(execFile)
@@ -230,6 +231,21 @@ export const toolDefinitions = [
       },
       required: ['mistake', 'improvement']
     }
+  },
+  {
+    name: 'query_kavak_db',
+    description:
+      'Query the in-server Kavak operational database (vehicles inventory, customer orders ORD-..., and official warranty/return/financing policies).',
+    parameters: {
+      type: 'object',
+      properties: {
+        table: {
+          type: 'string',
+          enum: ['all', 'vehicles', 'orders', 'policies']
+        },
+        query: { type: 'string' }
+      }
+    }
   }
 ]
 
@@ -339,5 +355,20 @@ export async function executeTool(
   if (name === 'send_message') return message(owner, room, agent, args.to, args.text)
   if (name === 'read_messages')
     return data.messages.filter((m) => m.owner === owner && m.room === room).slice(-12)
+  if (name === 'query_kavak_db') {
+    const table = ['all', 'vehicles', 'orders', 'policies'].includes(args.table)
+      ? (args.table as 'all' | 'vehicles' | 'orders' | 'policies')
+      : 'all'
+    const query = typeof args.query === 'string' ? args.query : ''
+    const result = queryKavakDatabase(table, query)
+    event(
+      owner,
+      'kavak.query',
+      `${agent} consultó BD Kavak (${table} · "${query || '*'}"): ${result.counts.total} registros.`,
+      run?.id,
+      { room, table, query, counts: result.counts }
+    )
+    return result
+  }
   throw new Error('Herramienta desconocida.')
 }

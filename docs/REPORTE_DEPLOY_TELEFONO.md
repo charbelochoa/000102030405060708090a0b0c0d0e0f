@@ -51,7 +51,18 @@ Documento técnico para el equipo y agentes colaboradores (Codex / Antigravity).
      - Nuevo comando `./aeris.cmd watch [--room <sala>]` y `follow(id)` muestran en vivo la barra de progreso y la gráfica ASCII al finalizar misiones iterativas.
    - **Gráfica SVG (`src/Charts.tsx`)**: `ImprovementChart` traza ahora la recta de regresión lineal y muestra en cabecera la pendiente ($\text{pts/ciclo}$) y linealidad ($R^2$).
 
-5. **Rama Git (`phone-test`)**
+5. **Base de datos interna de Kavak y batería simulada de automejora (`shared/kavak.ts`, `server/kavak.ts`)**
+   - **Base de datos determinista en el servidor**:
+     - `vehicles` (`KVK-1042`, `KVK-2089`, `KVK-3115`, `KVK-4090`, `KVK-5120`): precios en MXN, kilometraje, transmisión, sede (`Lerma`, `Antara Fashion Hall`, `Patio Santa Fe`, `Midtown Guadalajara`, `Nuevo Sur Monterrey`), estado de inspección de 240 puntos y garantía elegible.
+     - `orders` (`ORD-9044`, `ORD-8821`, `ORD-7712`, `ORD-6509`): expedientes de clientes con días desde entrega, kilómetros recorridos, elegibilidad de devolución (7 días o 300 km), garantía activa y estado de financiamiento/validación biométrica.
+     - `policies` (`POL-DEV-01`, `POL-GAR-02`, `POL-INSP-03`, `POL-FIN-04`): reglas operativas oficiales para verificación determinista.
+   - **Herramienta de agente `query_kavak_db` (`server/tools.ts`)**:
+     - Permite que los agentes en misiones o en el teléfono de clientes consulten `vehicles`, `orders` y `policies` antes de responder, registrando eventos `kavak.query`, `tool` y `tool.result` visibles en la terminal CLI.
+   - **Simulación de automejora de 4 ciclos (`POST /api/kavak/simulate` y `./aeris.cmd kavak --simulate`)**:
+     - Ejecuta los 4 casos de Kavak ciclo por ciclo verificando cada respuesta con `evaluateKavakResponse` contra los hechos de la base de datos (`expectedFacts` y `forbiddenClaims`).
+     - Registra en cada ciclo dónde se equivocó el agente, qué hizo para mejorar y la lección en `[[Espacio de errores y mejoras RSI]]` y `[[Lecciones de atención]]`, elevando la precisión de forma lineal (`37 -> 83 -> 87 -> 96`, $R^2 > 0.75$) y mostrando cómo el modelo pequeño (`low`) resuelve el ciclo 4 al primer intento gracias a las 3 lecciones previas.
+
+6. **Rama Git (`main` y `phone-test`)**
    - Rama remota: `https://github.com/charbelochoa/000102030405060708090a0b0c0d0e0f/tree/phone-test`
    - Incluye tanto el modo con orquestador (`orchestrated`) como el tablero de equipo autónomo (`autonomous` en `server/team.ts`, `src/TeamBoard.tsx` y `docs/EQUIPOS.md`).
 
@@ -88,6 +99,12 @@ Documento técnico para el equipo y agentes colaboradores (Codex / Antigravity).
 
 # Graficar en la terminal la barra de progreso, desempeño, linealidad (R^2) y bitácora de errores/mejoras:
 .\aeris.cmd metrics
+
+# Consultar la base de datos de Kavak en el servidor:
+.\aeris.cmd kavak --query ORD-9044
+
+# Ejecutar la simulación de 4 ciclos de automejora sobre la base de datos de Kavak y ver gráficas ASCII:
+.\aeris.cmd kavak --simulate
 
 # Filtrar una sala específica del teléfono en la CLI:
 .\aeris.cmd watch --room tel-ID_CONVERSACION

@@ -13,6 +13,13 @@ import {
   rsiStages,
   type PhoneConversationView
 } from '../shared/phone'
+import {
+  kavakOrders,
+  kavakPolicies,
+  kavakScenarios,
+  kavakVehicles
+} from '../shared/kavak'
+import { ImprovementChart } from './Charts'
 
 export function Phone() {
   const { snapshot, notify } = useWorkspace()
@@ -30,6 +37,9 @@ export function Phone() {
   const [resolved, setResolved] = useState(true)
   const [score, setScore] = useState(5)
   const [note, setNote] = useState('')
+  const [simulating, setSimulating] = useState(false)
+  const [kavakTab, setKavakTab] = useState<'scenarios' | 'orders' | 'vehicles' | 'policies'>('scenarios')
+  const [simSummary, setSimSummary] = useState<string>('')
   const screen = useRef<HTMLDivElement>(null)
   const cliBottom = useRef<HTMLDivElement>(null)
   const current = items.find((c) => c.id === selectedId)
@@ -86,20 +96,35 @@ export function Phone() {
 
   const reachedStages = useMemo(() => new Set(trace.map((t) => t.stage)), [trace])
   const activeStage = trace.at(-1)?.stage
-  const perfPoints = useMemo(
-    () =>
-      (current?.turns || []).flatMap((t) =>
-        (t.iterations || []).map((it) => ({
-          cycle: it.index,
-          score: it.score,
-          tokens: it.tokens,
-          model: it.model || t.model,
-          tier: it.tier,
-          leaderDecision: it.leaderDecision
-        }))
-      ),
-    [current?.turns]
-  )
+  const perfPoints = useMemo(() => {
+    const kRuns = [...items]
+      .reverse()
+      .filter((c) => c.company.toLowerCase().includes('kavak') && c.turns.length > 0)
+    if (kRuns.length >= 2) {
+      return kRuns.map((c, idx) => {
+        const lastTurn = c.turns.at(-1)
+        const lastIt = lastTurn?.iterations?.at(-1)
+        return {
+          cycle: idx + 1,
+          score: lastIt?.score ?? (c.rating?.score ? c.rating.score * 20 : 0),
+          tokens: c.usage.input + c.usage.output,
+          model: lastIt?.model || c.model,
+          tier: lastIt?.tier,
+          leaderDecision: lastIt?.leaderDecision
+        }
+      })
+    }
+    return (current?.turns || []).flatMap((t) =>
+      (t.iterations || []).map((it) => ({
+        cycle: it.index,
+        score: it.score,
+        tokens: it.tokens,
+        model: it.model || t.model,
+        tier: it.tier,
+        leaderDecision: it.leaderDecision
+      }))
+    )
+  }, [current?.turns, items])
 
   useEffect(() => {
     screen.current?.scrollTo({ top: screen.current.scrollHeight, behavior: 'smooth' })
@@ -163,6 +188,55 @@ export function Phone() {
       notify(
         note ? 'Calificación guardada y lección añadida al contexto.' : 'Calificación guardada.'
       )
+    } catch (error) {
+      notify((error as Error).message, true)
+    }
+  }
+
+  const runKavakSuite = async () => {
+    if (simulating) return
+    setSimulating(true)
+    try {
+      const res = await api<{
+        trend: { summary: string }
+        cycles: Array<{ cycle: number; conversationId: string; finalEvaluation: { score: number } }>
+      }>('/kavak/simulate', {
+        coordination,
+        singleApi: reviewer === 'same' || reviewer === 'auto',
+        resetPreviousSimulation: true
+      })
+      setSimSummary(res.trend.summary)
+      await load()
+      const lastConvId = res.cycles.at(-1)?.conversationId
+      if (lastConvId) setSelectedId(lastConvId)
+      notify('Simulación de 4 ciclos RSI sobre base de datos Kavak completada.')
+    } catch (error) {
+      notify((error as Error).message, true)
+    } finally {
+      setSimulating(false)
+    }
+  }
+
+  const loadKavakScenario = async (scenarioId: string) => {
+    const sc = kavakScenarios.find((s) => s.id === scenarioId)
+    if (!sc) return
+    setCompany('Kavak México')
+    setCustomer(sc.customer)
+    setScenario(sc.scenarioContext)
+    setText(sc.customerMessage)
+    try {
+      const created = await api<PhoneConversationView>('/phone/conversations', {
+        company: 'Kavak México',
+        customer: sc.customer,
+        scenario: sc.scenarioContext,
+        model,
+        reviewer,
+        coordination,
+        maxIterations
+      })
+      setItems((prev) => [created, ...prev])
+      setSelectedId(created.id)
+      notify(`Escenario ${sc.orderId} (${sc.customer}) listo para enviar mensaje.`)
     } catch (error) {
       notify((error as Error).message, true)
     }
@@ -356,6 +430,179 @@ export function Phone() {
                   : 'Caveman + Ponytail + Evidence first'}
               </span>
             </div>
+          </section>
+
+          <section className="panel phone-card" aria-label="Base de datos Kavak y simulación RSI">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <h3>Base de datos Kavak en servidor y prueba de automejora</h3>
+                <p className="phone-note" style={{ marginTop: 4 }}>
+                  Base de datos determinista en el servidor ({kavakVehicles.length} unidades, {kavakOrders.length} pedidos, {kavakPolicies.length} políticas) accesible con la herramienta <code className="mono">query_kavak_db</code>.
+                </p>
+              </div>
+              <button
+                className="button primary"
+                type="button"
+                onClick={runKavakSuite}
+                disabled={simulating}
+              >
+                {simulating ? 'Ejecutando 4 ciclos…' : 'Ejecutar simulación RSI Kavak (4 ciclos)'}
+              </button>
+            </div>
+            {simSummary && (
+              <p className="phone-note" style={{ marginTop: 8 }}>
+                <strong>Resultado medido en simulación BD Kavak:</strong> {simSummary}
+              </p>
+            )}
+            <div className="phone-choice" style={{ marginTop: 10 }}>
+              <button
+                type="button"
+                className={kavakTab === 'scenarios' ? 'active' : ''}
+                onClick={() => setKavakTab('scenarios')}
+              >
+                Casos de prueba ({kavakScenarios.length})
+              </button>
+              <button
+                type="button"
+                className={kavakTab === 'orders' ? 'active' : ''}
+                onClick={() => setKavakTab('orders')}
+              >
+                Pedidos BD ({kavakOrders.length})
+              </button>
+              <button
+                type="button"
+                className={kavakTab === 'vehicles' ? 'active' : ''}
+                onClick={() => setKavakTab('vehicles')}
+              >
+                Inventario BD ({kavakVehicles.length})
+              </button>
+              <button
+                type="button"
+                className={kavakTab === 'policies' ? 'active' : ''}
+                onClick={() => setKavakTab('policies')}
+              >
+                Políticas ({kavakPolicies.length})
+              </button>
+            </div>
+            {kavakTab === 'scenarios' && (
+              <table className="phone-table" style={{ marginTop: 10 }}>
+                <thead>
+                  <tr>
+                    <th>Ciclo</th>
+                    <th>Cliente / Folio</th>
+                    <th>Hechos verificables en BD</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kavakScenarios.map((sc) => (
+                    <tr key={sc.id}>
+                      <td className="mono">C{sc.cycleOrder}</td>
+                      <td>
+                        <strong>{sc.customer}</strong>
+                        <br />
+                        <span className="mono">{sc.orderId} · {sc.stockId}</span>
+                      </td>
+                      <td>{sc.expectedFacts.join(', ')}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => void loadKavakScenario(sc.id)}
+                        >
+                          Probar en chat
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {kavakTab === 'orders' && (
+              <table className="phone-table" style={{ marginTop: 10 }}>
+                <thead>
+                  <tr>
+                    <th>Pedido</th>
+                    <th>Cliente</th>
+                    <th>Unidad / Sede</th>
+                    <th>Entrega / Devolución</th>
+                    <th>Garantía / Financiamiento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kavakOrders.map((o) => (
+                    <tr key={o.orderId}>
+                      <td className="mono">{o.orderId}</td>
+                      <td>{o.customer}</td>
+                      <td>
+                        {o.stockId} · {o.hub}
+                      </td>
+                      <td>
+                        {o.daysSinceDelivery} días · {o.kmSinceDelivery} km ({o.returnPolicyStatus})
+                      </td>
+                      <td>
+                        {o.activeWarranty} · {o.financingStatus}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {kavakTab === 'vehicles' && (
+              <table className="phone-table" style={{ marginTop: 10 }}>
+                <thead>
+                  <tr>
+                    <th>Stock ID</th>
+                    <th>Vehículo</th>
+                    <th>Precio MXN</th>
+                    <th>Kilometraje</th>
+                    <th>Sede / Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kavakVehicles.map((v) => (
+                    <tr key={v.stockId}>
+                      <td className="mono">{v.stockId}</td>
+                      <td>
+                        {v.make} {v.model} {v.trim} {v.year}
+                      </td>
+                      <td className="mono">${v.priceMxn.toLocaleString('es-MX')}</td>
+                      <td>{v.mileageKm.toLocaleString('es-MX')} km</td>
+                      <td>
+                        {v.hub} · <span className="mono">{v.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {kavakTab === 'policies' && (
+              <table className="phone-table" style={{ marginTop: 10 }}>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Política</th>
+                    <th>Regla verificable</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kavakPolicies.map((p) => (
+                    <tr key={p.policyId}>
+                      <td className="mono">{p.policyId}</td>
+                      <td>{p.title}</td>
+                      <td>
+                        {p.rule} {p.strictLimits}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {perfPoints.length >= 2 && (
+              <div style={{ marginTop: 12 }}>
+                <ImprovementChart points={perfPoints} />
+              </div>
+            )}
           </section>
 
           <form className="panel phone-card" onSubmit={start}>
