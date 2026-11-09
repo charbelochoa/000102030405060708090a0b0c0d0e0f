@@ -2,7 +2,7 @@ name: Publish interface
 on:
   workflow_dispatch:
   push:
-    branches: [main, phone-test]
+    branches: [main]
 permissions:
   contents: read
   pages: write
