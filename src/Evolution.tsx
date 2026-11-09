@@ -5,6 +5,7 @@ import { money } from '../shared/catalog'
 import type { Trial, Study } from '../shared/analysis'
 import { runCampaign } from '../shared/campaign'
 import { Generations } from './Generations'
+import { AgentCycle } from './AgentCycle'
 import type { SearchMode } from '../shared/analysis'
 type View = {
   active: string
@@ -137,6 +138,13 @@ export function Evolution() {
           </button>
         )}
       </SectionTitle>
+      <AgentCycle />
+      {snapshot?.rsiEnabled === false && (
+        <p role="status">
+          RSI cerrado en este servidor. El historial se conserva; las propuestas y promociones están
+          desactivadas.
+        </p>
+      )}
       {state && (
         <>
           <Generations experiments={state.experiments} />

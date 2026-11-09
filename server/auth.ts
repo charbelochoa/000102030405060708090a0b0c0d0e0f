@@ -40,7 +40,7 @@ export function identity(req: Request, _res: Response, next: NextFunction) {
     next()
     return
   }
-  const cookie = cookieValue(req, 'aeris_session')
+  const cookie = bearer || cookieValue(req, 'aeris_session')
   if (cookie) {
     const session = data.sessions.find((s) => s.hash === digest(cookie) && s.expires > Date.now())
     const user =
@@ -73,10 +73,12 @@ export function login(res: Response, user: User) {
     path: '/',
     maxAge: 7 * 86_400_000
   })
+  return token
 }
 
 export function logout(req: Request, res: Response) {
-  const cookie = cookieValue(req, 'aeris_session')
+  const cookie =
+    req.headers.authorization?.replace(/^Bearer /, '') || cookieValue(req, 'aeris_session')
   if (cookie) data.sessions = data.sessions.filter((s) => s.hash !== digest(cookie))
   save()
   res.clearCookie('aeris_session', { path: '/' })

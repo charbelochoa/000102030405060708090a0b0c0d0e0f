@@ -10,3 +10,5 @@ build
 release
 artifacts
 public/fonts/SFPro.woff2
+deploy/server.env
+deploy/.env

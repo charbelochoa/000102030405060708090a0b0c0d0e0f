@@ -1,5 +1,17 @@
 export type ProviderId = 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'nvidia' | 'local'
 export type RunStatus = 'queued' | 'running' | 'completed' | 'stopped' | 'failed'
+export type Coordination = 'orchestrated' | 'autonomous'
+export interface TeamTask {
+  id: string
+  role: 'solve' | 'review'
+  round: number
+  dependsOn?: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  worker?: string
+  model?: string
+  output?: string
+  error?: string
+}
 export type StopReason =
   | 'target'
   | 'budget'
@@ -66,8 +78,23 @@ export interface Iteration {
   verdict: string
   candidate: string
   accepted: boolean
+  model?: string
+  tier?: Tier
+  selfCheck?: string
+  mistake?: string
+  leaderDecision?: 'keep_small' | 'escalate_model' | 'spawn_subagent' | 'accept'
+  subagent?: {
+    role: string
+    tier: Tier
+    model?: string
+    iterations: number
+    reasoning: string
+    output?: string
+  }
 }
 export interface Run {
+  coordination?: Coordination
+  tasks?: TeamTask[]
   id: string
   owner: string
   title: string
@@ -153,6 +180,7 @@ export interface User {
   provider: string
 }
 export interface Snapshot {
+  rsiEnabled?: boolean
   runs: Run[]
   events: AgentEvent[]
   messages: AgentMessage[]

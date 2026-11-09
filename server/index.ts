@@ -25,8 +25,19 @@ import {
 import { listFiles, readWorkspaceFile, searchFiles, worktree, writeWorkspaceFile } from './tools'
 import { defaults, providers } from '../shared/catalog'
 import { registerLab } from './lab-api'
+import { registerPhone } from './phone'
+import { discoverModels } from './providers'
+import { databaseStatus } from './realtime'
 import { fileSchema } from '../shared/analysis'
-import { backlinks, listPages, retrieveContext, savePage } from './brain'
+import { requiredContextSpaces } from '../shared/brain'
+import {
+  backlinks,
+  listCycleReflections,
+  listPages,
+  recordCycleReflection,
+  retrieveContext,
+  savePage
+} from './brain'
 
 const providerId = z.enum(['openai', 'anthropic', 'google', 'xai', 'deepseek', 'nvidia', 'local'])
 const number = (min: number, max: number) => z.number().finite().min(min).max(max)
@@ -44,6 +55,7 @@ const modelSchema = z.object({
   checkedAt: z.string().max(20)
 })
 const newRunSchema = z.object({
+  coordination: z.enum(['orchestrated', 'autonomous']).default('orchestrated'),
   prompt: z.string().trim().min(3).max(30_000),
   title: z.string().trim().min(1).max(150).optional(),
   model: z.string().max(100).optional(),
@@ -69,6 +81,7 @@ export function createApp() {
   const app = express()
   app.disable('x-powered-by')
   app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) res.set('Cache-Control', 'no-store')
     res.set({
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'same-origin',
@@ -81,14 +94,40 @@ export function createApp() {
       return
     }
     const origin = req.headers.origin
-    const allowedOrigins = [new URL(publicUrl).origin, `http://${req.headers.host}`]
+    const configuredUrl = new URL(publicUrl)
+    const allowedOrigins = [configuredUrl.origin, `http://${req.headers.host}`]
+    const frontendOrigin =
+      process.env.AERIS_FRONTEND_URL && new URL(process.env.AERIS_FRONTEND_URL).origin
+    if (frontendOrigin) allowedOrigins.push(frontendOrigin)
+    if (['localhost', '127.0.0.1'].includes(configuredUrl.hostname)) {
+      configuredUrl.hostname = configuredUrl.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
+      allowedOrigins.push(configuredUrl.origin)
+    }
     if (origin && !allowedOrigins.includes(origin)) {
       res.status(403).json({ error: 'Origen no permitido.' })
       return
     }
+    if (origin && allowedOrigins.includes(origin)) {
+      res.set({
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Credentials': 'true',
+        Vary: 'Origin',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+      })
+    }
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204)
+      return
+    }
     if (
       !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
-      req.headers['sec-fetch-site'] === 'cross-site'
+      req.headers['sec-fetch-site'] === 'cross-site' &&
+      !(origin === frontendOrigin && req.headers.authorization?.startsWith('Bearer ')) &&
+      !(
+        origin === frontendOrigin &&
+        ['/api/auth/login', '/api/auth/register', '/api/auth/local'].includes(req.path)
+      )
     ) {
       res.status(403).json({ error: 'Solicitud externa rechazada.' })
       return
@@ -97,6 +136,21 @@ export function createApp() {
   })
   app.use(express.json({ limit: '34mb' }))
   app.use(identity)
+  app.use('/api', (req, res, next) => {
+    if (
+      process.env.AERIS_RSI_ENABLED === 'false' &&
+      req.method !== 'GET' &&
+      (/^\/(optimizations|evolution|benchmarks|versions)(\/|$)/.test(req.path) ||
+        /\/experience$/.test(req.path))
+    ) {
+      res.status(403).json({
+        error:
+          'RSI cerrado para este servidor. No se permiten cambios de aprendizaje ni promociones.'
+      })
+      return
+    }
+    next()
+  })
   app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'AERIS', version: '1.1.0' }))
   app.get('/api/snapshot', (req, res) => {
     const id = owner(req)
@@ -115,7 +169,8 @@ export function createApp() {
         google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
         github: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
         required
-      }
+      },
+      rsiEnabled: process.env.AERIS_RSI_ENABLED !== 'false'
     })
   })
   app.post('/api/auth/local', (req, res) => {
@@ -126,8 +181,8 @@ export function createApp() {
       res.status(403).json({ error: 'El acceso local está desactivado.' })
       return
     }
-    login(res, localUser)
-    res.json({ user: localUser })
+    const sessionToken = login(res, localUser)
+    res.json({ user: localUser, sessionToken })
   })
   app.use('/api/auth', (req, res, next) => {
     if (req.method !== 'POST') {
@@ -157,8 +212,8 @@ export function createApp() {
         })
         .parse(req.body)
       const user = register(input.email, input.password, input.name)
-      login(res, user)
-      res.json({ user })
+      const sessionToken = login(res, user)
+      res.json({ user, sessionToken })
     })
   )
   app.post(
@@ -168,8 +223,8 @@ export function createApp() {
         .object({ email: z.email(), password: z.string().min(1).max(256) })
         .parse(req.body)
       const user = authenticate(input.email, input.password)
-      login(res, user)
-      res.json({ user })
+      const sessionToken = login(res, user)
+      res.json({ user, sessionToken })
     })
   )
   app.post('/api/auth/logout', (req, res) => {
@@ -313,6 +368,14 @@ export function createApp() {
       res.json(publicSettings())
     })
   )
+  app.get(
+    '/api/providers/:id/models',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      res.json(await discoverModels(providerId.parse(req.params.id)))
+    })
+  )
+  app.get('/api/database/status', requireAdmin, (_req, res) => res.json(databaseStatus()))
   app.patch(
     '/api/skills/:id',
     requireAdmin,
@@ -414,9 +477,51 @@ export function createApp() {
     )
   )
   registerLab(app)
+  registerPhone(app)
   app.get('/api/context', requireUser, (req, res) => {
-    res.json({ pages: listPages(owner(req)) })
+    const id = owner(req)
+    res.json({
+      pages: listPages(id),
+      reflections: listCycleReflections(id),
+      requiredSpaces: requiredContextSpaces
+    })
   })
+  app.get('/api/context/reflections', requireUser, (req, res) => {
+    res.json({
+      reflections: listCycleReflections(owner(req)),
+      requiredSpaces: requiredContextSpaces
+    })
+  })
+  app.post(
+    '/api/context/reflections',
+    requireUser,
+    asyncRoute((req, res) => {
+      const input = z
+        .object({
+          runId: z.string().min(1).max(100),
+          cycle: z.number().int().min(1).max(50),
+          coordination: z.enum(['orchestrated', 'autonomous']).default('orchestrated'),
+          agent: z.string().min(1).max(100),
+          model: z.string().min(1).max(100),
+          tier: z.enum(['low', 'medium', 'high', 'reasoning']).default('low'),
+          reviewerModel: z.string().min(1).max(100),
+          score: z.number().min(0).max(100),
+          accepted: z.boolean().default(true),
+          selfCheck: z.string().min(1).max(1000),
+          mistake: z.string().min(1).max(2000),
+          improvement: z.string().min(1).max(2000),
+          leaderDecision: z
+            .enum(['keep_small', 'escalate_model', 'spawn_subagent', 'accept'])
+            .default('keep_small'),
+          nextModel: z.string().max(100).optional(),
+          spacesConsulted: z.array(z.string().max(160)).max(10).default([...requiredContextSpaces]),
+          tokens: z.number().int().min(0).default(0),
+          costNano: z.string().max(40).default('0')
+        })
+        .parse(req.body)
+      res.status(201).json(recordCycleReflection(owner(req), input))
+    })
+  )
   app.post(
     '/api/context',
     requireUser,

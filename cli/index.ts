@@ -7,6 +7,14 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Run, Snapshot } from '../shared/types'
+import type { ContextCycleRecord } from '../shared/brain'
+import {
+  buildRsiTrace,
+  renderAsciiPerformanceChart,
+  renderAsciiProgressBar,
+  rsiStages,
+  type RsiTraceLine
+} from '../shared/phone'
 import { chartSvg } from '../shared/chart'
 import { fileTypes } from '../shared/file-types'
 import { money, providers, stopLabels } from '../shared/catalog'
@@ -69,18 +77,55 @@ const banner = [
   '/_/   \\_\\_____|_| \\_\\___|____/'
 ].join('\n')
 
+function renderTraceLine(line: RsiTraceLine) {
+  const tag =
+    line.kind === 'error'
+      ? chalk.red(line.prefix)
+      : line.kind === 'agent-msg'
+        ? chalk.cyan(line.prefix)
+        : line.kind === 'review'
+          ? chalk.yellow(line.prefix)
+          : line.kind === 'tool'
+            ? chalk.magenta(line.prefix)
+            : chalk.green(line.prefix)
+  print(`  ${tag} ${line.text}`)
+  if (line.detail) print(chalk.gray(`    |_ ${line.detail}`))
+}
+
 async function follow(id: string, quiet = false): Promise<Run> {
   let last = ''
+  const seen = new Set<string>()
   const frames = ['|', '/', '-', '\\']
   let frame = 0
   while (true) {
-    const run = await request<Run>(`/runs/${id}`)
+    const [run, snapshot] = await Promise.all([
+      request<Run>(`/runs/${id}`),
+      quiet ? Promise.resolve(null) : request<Snapshot>('/snapshot').catch(() => null)
+    ])
+    if (!quiet && snapshot) {
+      const trace = buildRsiTrace(snapshot.events, snapshot.messages, {
+        runIds: [id],
+        room: run.session
+      })
+      for (const line of trace) {
+        if (seen.has(line.id)) continue
+        seen.add(line.id)
+        if (process.stdout.isTTY) process.stdout.write('\r\x1b[2K')
+        renderTraceLine(line)
+      }
+    }
     const marker = `${run.status}-${run.iterations.length}`
     if (!quiet && marker !== last) {
       if (process.stdout.isTTY) process.stdout.write('\r\x1b[2K')
+      const bar = renderAsciiProgressBar(
+        run.iterations.length,
+        Math.max(1, run.maxIterations),
+        20,
+        'Ciclos RSI'
+      )
       print(
         chalk.gray(
-          `  ${run.status} · ${run.iterations.length} iteraciones · ${run.usage.input + run.usage.output} tokens · ${money(run.costNano)} USD`
+          `  ${bar} · ${run.status} · ${run.usage.input + run.usage.output} tokens · ${money(run.costNano)} USD`
         )
       )
       last = marker
@@ -88,13 +133,32 @@ async function follow(id: string, quiet = false): Promise<Run> {
     if (!['running', 'queued'].includes(run.status)) {
       if (!quiet) {
         print(chalk.green(`\n${stopLabels[run.stopReason || ''] || run.status}`))
+        if (run.iterations.length) {
+          print(
+            chalk.cyan(
+              '\n' +
+                renderAsciiPerformanceChart(
+                  run.iterations.map((it) => ({
+                    cycle: it.index,
+                    score: it.score,
+                    tokens: it.tokens,
+                    model: it.model,
+                    tier: it.tier,
+                    leaderDecision: it.leaderDecision
+                  })),
+                  7,
+                  7
+                )
+            )
+          )
+        }
         if (run.result || run.error) print(run.result || run.error)
       }
       return run
     }
     if (!quiet && process.stdout.isTTY)
       process.stdout.write(
-        `\r${chalk.green(frames[frame++ % frames.length])} ${chalk.gray('Construyendo y evaluando…')}`
+        `\r${chalk.green(frames[frame++ % frames.length])} ${chalk.gray('Ejecutando ciclo RSI y coordinando agentes…')}`
       )
     await delay(400)
   }
@@ -140,6 +204,7 @@ program
 program
   .command('run')
   .argument('<prompt>')
+  .option('--coordination <mode>', 'orchestrated o autonomous', 'orchestrated')
   .option('--model <id>', 'Modelo o auto', 'auto')
   .option('--reviewer <id>', 'Modelo revisor', 'auto')
   .option('--room <name>', 'Sala compartida', 'general')
@@ -152,6 +217,7 @@ program
   .action(async (prompt, options) => {
     const run = await request<Run>('/runs', {
       prompt,
+      coordination: options.coordination,
       model: options.model,
       reviewer: options.reviewer,
       session: options.room,
@@ -405,6 +471,56 @@ program
   .description('Páginas del cerebro de contexto')
   .action(async () => print(await request('/context')))
 program
+  .command('metrics')
+  .description('Gráfica ASCII de desempeño, linealidad y bitácora RSI en terminal')
+  .option('--run <id>', 'Filtrar por misión')
+  .action(async (options) => {
+    const [snapshot, ctx] = await Promise.all([
+      request<Snapshot>('/snapshot'),
+      request<{ reflections: ContextCycleRecord[]; requiredSpaces: string[] }>(
+        '/context/reflections'
+      )
+    ])
+    const reflections = options.run
+      ? ctx.reflections.filter((r) => r.runId === options.run || r.runId.startsWith(options.run))
+      : ctx.reflections
+    const points = reflections.length
+      ? reflections.map((r, i) => ({
+          cycle: i + 1,
+          score: r.score,
+          tokens: r.tokens,
+          model: r.model,
+          tier: r.tier,
+          leaderDecision: r.leaderDecision
+        }))
+      : snapshot.runs
+          .filter((r) => !options.run || r.id === options.run || r.id.startsWith(options.run))
+          .flatMap((r) =>
+            r.iterations.map((it) => ({
+              cycle: it.index,
+              score: it.score,
+              tokens: it.tokens,
+              model: it.model || r.model,
+              tier: it.tier,
+              leaderDecision: it.leaderDecision
+            }))
+          )
+    print(chalk.green(banner))
+    print(
+      chalk.cyan(
+        '\n' + renderAsciiPerformanceChart(points, points.length ? 7 : 1, 7)
+      )
+    )
+    if (reflections.length) {
+      print(chalk.yellow('\nBitácora RSI de errores y mejoras (Cerebro de contexto):'))
+      for (const r of reflections.slice(-10)) {
+        print(
+          `  [Ciclo ${r.cycle} · ${r.model} (${r.tier}) -> ${r.leaderDecision}] ${r.score}/100\n    Error: ${r.mistake}\n    Mejora: ${r.improvement}`
+        )
+      }
+    }
+  })
+program
   .command('recall')
   .argument('<query>')
   .option('--tokens <n>', 'Presupuesto de contexto estimado', '1800')
@@ -437,6 +553,38 @@ program
     if (!response.ok) throw new Error('No se pudo exportar el consumo.')
     await writeFile(resolve(options.out), await response.text())
     print(`Guardado: ${resolve(options.out)}`)
+  })
+
+program
+  .command('watch')
+  .description('Observar en vivo el diálogo entre agentes y las etapas del ciclo RSI')
+  .option('--room <name>', 'Filtrar por sala')
+  .action(async (options) => {
+    print(chalk.green(banner))
+    print(
+      chalk.gray(
+        `\nAERIS CLI · Monitor en tiempo real del ciclo RSI${options.room ? ` · sala ${options.room}` : ''}\nEtapas: ${rsiStages.map((s) => `[${s.id} ${s.short}]`).join(' -> ')}\n`
+      )
+    )
+    const seen = new Set<string>()
+    while (true) {
+      try {
+        const snapshot = await request<Snapshot>('/snapshot')
+        const trace = buildRsiTrace(
+          snapshot.events,
+          snapshot.messages,
+          options.room ? { room: options.room } : undefined
+        )
+        for (const line of trace) {
+          if (seen.has(line.id)) continue
+          seen.add(line.id)
+          renderTraceLine(line)
+        }
+      } catch (e) {
+        print(chalk.red((e as Error).message))
+      }
+      await delay(800)
+    }
   })
 
 program
@@ -489,7 +637,25 @@ program
         }
         if (text === '/help') {
           print(
-            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
+            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /metrics · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
+          )
+          return
+        }
+        if (text === '/metrics') {
+          const ctx = await request<{ reflections: ContextCycleRecord[] }>('/context/reflections')
+          print(
+            renderAsciiPerformanceChart(
+              ctx.reflections.map((r, i) => ({
+                cycle: i + 1,
+                score: r.score,
+                tokens: r.tokens,
+                model: r.model,
+                tier: r.tier,
+                leaderDecision: r.leaderDecision
+              })),
+              ctx.reflections.length ? 7 : 1,
+              7
+            )
           )
           return
         }

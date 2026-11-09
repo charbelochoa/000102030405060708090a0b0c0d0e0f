@@ -13,5 +13,7 @@
 - Validar candidatos en una partición independiente antes de promover políticas.
 - No consultar el test final para proponer mejoras.
 - Ejecutar `npm run check` y `npm run build` antes de entregar cambios.
+- Registrar en el Cerebro de contexto (`Espacio de errores y mejoras RSI`, `Lecciones de atención`, `Reglas de arquitectura y orquestación`) cada ciclo evaluado: agente, modelo, autochequeo, dónde se equivocó, qué hizo para mejorar y decisión del líder (`keep_small`, `escalate_model`, `spawn_subagent`, `accept`).
+- Soportar tanto arquitectura multimodelo como modo multiagente con una sola API y un solo modelo LLM (`reviewer: "same"` o catálogo de 1 modelo, documentado en `docs/UNA_SOLA_API.md`), escalando por perfil cognitivo (`low` a `reasoning`) con contextos independientes.
 
 - Mostrar solo texto que identifique datos, explique una limitación relevante o permita al usuario actuar. Los espacios nuevos arrancan vacíos.

@@ -1,5 +1,9 @@
 # AERIS
 
+Coordinación por misión: [con orquestador y equipos autónomos](docs/EQUIPOS.md).
+
+Despliegue de prueba: [servidor GCP, Firebase y GitHub Pages](docs/GCP.md).
+
 Espacio de trabajo para coordinar modelos, analizar datos y evaluar políticas de ejecución. La web, el escritorio Windows y la terminal comparten una API y el mismo registro de uso.
 
 ## Iniciar

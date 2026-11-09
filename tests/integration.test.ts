@@ -13,6 +13,7 @@ process.env.AERIS_WORKSPACE = root
 process.env.AERIS_DATA_DIR = join(root, '.aeris')
 process.env.AERIS_EMBEDDED = 'true'
 process.env.AERIS_AUTH_REQUIRED = 'false'
+process.env.AERIS_FRONTEND_URL = 'https://test.github.io/aeris/'
 
 for (const key of [
   'OPENAI_API_KEY',
@@ -57,7 +58,58 @@ test('health and authentication boundaries are enforced', async () => {
     body: '{}'
   })
   assert.equal(rejected.status, 403)
+  const local = await fetch(`${base}/auth/local`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'http://127.0.0.1:5173' },
+    body: '{}'
+  })
+  assert.equal(local.status, 200)
   assert.equal((await call('/settings', { budget: -1 }, true, 'PATCH')).response.status, 400)
+})
+
+test('Pages origin supports preflight, bearer sessions and revocation', async () => {
+  const origin = 'https://test.github.io'
+  const preflight = await fetch(`${base}/auth/login`, {
+    method: 'OPTIONS',
+    headers: { Origin: origin }
+  })
+  assert.equal(preflight.status, 204)
+  assert.equal(preflight.headers.get('access-control-allow-origin'), origin)
+  const local = await call('/auth/local', {}, false)
+  const token = local.value.sessionToken
+  assert.equal(typeof token, 'string')
+  const remoteHeaders = {
+    Origin: origin,
+    Authorization: `Bearer ${token}`,
+    'Sec-Fetch-Site': 'cross-site'
+  }
+  const snapshot = await fetch(`${base}/snapshot`, { headers: remoteHeaders })
+  assert.equal((await snapshot.json()).user.id, 'local')
+  assert.equal(
+    (await fetch(`${base}/auth/logout`, { method: 'POST', headers: remoteHeaders })).status,
+    200
+  )
+  assert.equal(
+    (
+      await fetch(`${base}/runs`, {
+        method: 'POST',
+        headers: { ...remoteHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'test' })
+      })
+    ).status,
+    401
+  )
+})
+
+test('RSI can be paused without deleting previous experiments', async () => {
+  process.env.AERIS_RSI_ENABLED = 'false'
+  try {
+    assert.equal((await call('/optimizations', {})).response.status, 403)
+    assert.equal((await call('/evolution')).response.status, 200)
+    assert.equal((await call('/snapshot')).value.rsiEnabled, false)
+  } finally {
+    delete process.env.AERIS_RSI_ENABLED
+  }
 })
 
 test('files cannot escape the workspace or reveal environment and application secrets', async () => {

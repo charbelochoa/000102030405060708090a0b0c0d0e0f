@@ -1,0 +1,5 @@
+aeris-phone.136-118-8-128.sslip.io {
+  reverse_proxy 127.0.0.1:4330 {
+    flush_interval -1
+  }
+}

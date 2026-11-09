@@ -115,6 +115,102 @@
   padding-inline-start: 22px;
   font-size: 13px;
 }
+.team-board {
+  margin: 16px 0;
+  min-width: 0;
+}
+.team-board h3 {
+  font-size: 14px;
+}
+.team-board ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+}
+.team-board li {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  flex: 1 1 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.team-board li[data-status='running'] {
+  border-color: var(--secondary);
+}
+.team-board span,
+.team-board small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.team-board strong {
+  font-size: 13px;
+}
+.agent-cycle-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1.1fr);
+  gap: 24px;
+}
+.agent-cycle ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.agent-cycle li {
+  display: grid;
+  justify-items: center;
+}
+.agent-cycle li button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.agent-cycle li button span,
+.cycle-detail > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.agent-cycle li button svg {
+  margin-left: auto;
+}
+.agent-cycle li button[aria-pressed='true'] {
+  border-color: var(--secondary);
+}
+.cycle-arrow {
+  color: var(--muted);
+  margin: 3px;
+}
+.cycle-detail {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.cycle-detail h3 {
+  margin: 10px 0;
+}
+.cycle-detail > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+@media (max-width: 650px) {
+  .agent-cycle-layout {
+    grid-template-columns: 1fr;
+  }
+}
 .workflow-steps li {
   border-inline-start: 1px solid var(--line);
   padding: 6px 10px;

@@ -11,6 +11,8 @@ import { resolve, join } from 'node:path'
 import { createHash, randomBytes, createCipheriv, createDecipheriv, randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { defaults, providers } from '../shared/catalog'
+import { replicate } from './realtime'
+import { cancelTasks } from './team'
 import type {
   AgentEvent,
   AgentMessage,
@@ -21,7 +23,8 @@ import type {
   UsageRecord
 } from '../shared/types'
 import type { Study } from '../shared/analysis'
-import type { ContextPage } from '../shared/brain'
+import type { ContextCycleRecord, ContextPage } from '../shared/brain'
+import type { PhoneConversation } from '../shared/phone'
 
 export const workspace = resolve(process.env.AERIS_WORKSPACE || process.cwd())
 export const dataDir = resolve(process.env.AERIS_DATA_DIR || join(workspace, '.aeris'))
@@ -48,7 +51,9 @@ interface Data {
   keys: Record<string, string>
   studies?: Record<string, Study>
   contextPages?: ContextPage[]
+  cycleReflections?: ContextCycleRecord[]
   usageLedger?: UsageRecord[]
+  phone?: PhoneConversation[]
 }
 
 const skill = (
@@ -180,6 +185,7 @@ for (const run of data.runs) {
       }
     run.status = 'stopped'
     run.stopReason = 'recovered'
+    cancelTasks(run.tasks || [])
   }
 }
 
@@ -188,6 +194,14 @@ export function save() {
   writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 })
   if (existsSync(storePath)) copyFileSync(storePath, `${storePath}.bak`)
   renameSync(tmp, storePath)
+  if (process.env.AERIS_FIREBASE_URL) {
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', master, iv)
+    const encrypted = Buffer.concat([cipher.update(JSON.stringify(data), 'utf8'), cipher.final()])
+    replicate(
+      `${iv.toString('hex')}:${cipher.getAuthTag().toString('hex')}:${encrypted.toString('hex')}`
+    )
+  }
 }
 
 export function event(

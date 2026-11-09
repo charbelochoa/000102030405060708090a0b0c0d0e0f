@@ -1,0 +1,32 @@
+services:
+  api:
+    build:
+      context: ..
+    restart: unless-stopped
+    env_file: server.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4318
+      AERIS_AUTH_REQUIRED: 'true'
+      AERIS_DATA_DIR: /data
+      AERIS_WORKSPACE: /workspace
+    volumes:
+      - aeris-data:/data
+      - aeris-workspace:/workspace
+    expose:
+      - '4318'
+  https:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      AERIS_DOMAIN: ${AERIS_DOMAIN:?Define AERIS_DOMAIN}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+volumes:
+  aeris-data:
+  aeris-workspace:
+  caddy-data:

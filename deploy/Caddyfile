@@ -1,0 +1,5 @@
+{$AERIS_DOMAIN} {
+  reverse_proxy api:4318 {
+    flush_interval -1
+  }
+}

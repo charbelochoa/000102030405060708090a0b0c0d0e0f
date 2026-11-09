@@ -1,9 +1,41 @@
 import { useId, type ReactNode } from 'react'
+import { apiFile, useWorkspace } from './lib'
 import * as Dialog from '@radix-ui/react-dialog'
 import * as SwitchPrimitive from '@radix-ui/react-switch'
 import { ArrowUpRight, ChevronRight, X } from 'lucide-react'
 import { providers, stopLabels } from '../shared/catalog'
 import type { ProviderId, Run } from '../shared/types'
+
+export function DownloadLink({
+  path,
+  filename,
+  children
+}: {
+  path: string
+  filename: string
+  children: ReactNode
+}) {
+  const { notify } = useWorkspace()
+  return (
+    <button
+      className="button"
+      onClick={async () => {
+        try {
+          const url = URL.createObjectURL(await apiFile(path))
+          const link = document.createElement('a')
+          link.href = url
+          link.download = filename
+          link.click()
+          setTimeout(() => URL.revokeObjectURL(url), 1000)
+        } catch (e) {
+          notify((e as Error).message, true)
+        }
+      }}
+    >
+      {children}
+    </button>
+  )
+}
 
 export function AerisMark({ small = false }: { small?: boolean }) {
   return (
@@ -34,7 +66,8 @@ export function ProviderMark({
     >
       <img
         src={
-          '/providers/' +
+          import.meta.env.BASE_URL +
+          'providers/' +
           (provider === 'google' ? 'gemini' : provider === 'local' ? 'qwen' : provider) +
           '.svg'
         }

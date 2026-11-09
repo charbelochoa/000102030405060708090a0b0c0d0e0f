@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, FileUp, ArrowRight } from 'lucide-react'
-import { api, useWorkspace } from './lib'
-import { SectionTitle } from './components'
+import { api, apiFile, useWorkspace } from './lib'
+import { DownloadLink, SectionTitle } from './components'
 import { fileTypes } from '../shared/file-types'
 import type { Profile, AnalysisArtifact, AnalysisPlan } from '../shared/analysis'
 import type { Attachment } from '../shared/types'
@@ -38,8 +38,26 @@ export function ArtifactPanel({ id, kind = 'bar' }: { id: string; kind?: 'bar' |
       alive = false
     }
   }, [id, kind])
+  const [imageUrl, setImageUrl] = useState('')
+  const chartPath = '/lab/artifacts/' + id + '/chart.svg?kind=' + chart + '&offset=' + offset
+  useEffect(() => {
+    let active = true
+    let objectUrl = ''
+    apiFile(chartPath)
+      .then((blob) => {
+        if (active) {
+          objectUrl = URL.createObjectURL(blob)
+          setImageUrl(objectUrl)
+        }
+      })
+      .catch((e) => active && setError(e.message))
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [chartPath])
   if (!a) return <p role="status">{error || 'Cargando resultado…'}</p>
-  const url = '/api/lab/artifacts/' + id + '/chart.svg?kind=' + chart + '&offset=' + offset
+  const url = chartPath
   return (
     <section className="lab-result">
       <header>
@@ -52,15 +70,15 @@ export function ArtifactPanel({ id, kind = 'bar' }: { id: string; kind?: 'bar' |
           <option value="bar">Barras</option>
           <option value="line">Línea</option>
         </select>
-        <a className="button" href={url} download={id + '.svg'}>
+        <DownloadLink path={url} filename={id + '.svg'}>
           <Download size={14} />
           SVG
-        </a>
-        <a className="button" href={'/api/lab/artifacts/' + id} download={id + '.json'}>
+        </DownloadLink>
+        <DownloadLink path={'/lab/artifacts/' + id} filename={id + '.json'}>
           JSON
-        </a>
+        </DownloadLink>
       </header>
-      <img src={url} alt={'Gráfica de ' + a.source} />
+      <img src={imageUrl || undefined} alt={'Gráfica de ' + a.source} />
       <div className="lab-table">
         <table>
           <thead>

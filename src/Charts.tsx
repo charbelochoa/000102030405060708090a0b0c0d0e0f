@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { area, curveMonotoneX, line, scaleLinear } from 'd3'
+import { computePerformanceTrend } from '../shared/phone'
 import type { Run } from '../shared/types'
 import { formatTokens } from './lib'
 
@@ -35,6 +36,13 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
     .curve(curveMonotoneX)
   const active = hovered === null ? points.at(-1)! : points[Math.min(hovered, points.length - 1)]
   const target = valid.length ? valid.reduce((s, r) => s + r.target, 0) / valid.length : 90
+  const trend = computePerformanceTrend(
+    points.map((p) => ({ cycle: p.index, score: p.value }))
+  )
+  const regressionPoints = points.map((p) => ({
+    index: p.index,
+    value: Math.max(0, Math.min(100, trend.intercept + trend.slope * p.index))
+  }))
   return (
     <div className="improvement-chart">
       <div className="chart-readout">
@@ -42,7 +50,12 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
           {active.value.toFixed(1)}
           <span>/100</span>
         </strong>
-        <span>{hovered === null ? 'última evaluación media' : `iteración ${active.index}`}</span>
+        <span>
+          {hovered === null ? 'última evaluación media' : `iteración ${active.index}`}
+          {points.length > 1
+            ? ` · pendiente ${trend.slope >= 0 ? '+' : ''}${trend.slope.toFixed(2)} pts/ciclo · R²=${trend.rSquared.toFixed(2)} (${trend.isLinearImprovement ? 'mejora lineal' : 'no lineal'})`
+            : ''}
+        </span>
       </div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
@@ -84,6 +97,16 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
               strokeDasharray="4 5"
               opacity="0.75"
             />
+            {points.length > 1 && (
+              <path
+                d={path(regressionPoints)!}
+                fill="none"
+                stroke="var(--tone-150)"
+                strokeWidth="1.4"
+                strokeDasharray="2 3"
+                opacity="0.85"
+              />
+            )}
             <path d={path(points)!} fill="none" stroke="var(--chart-main)" strokeWidth="2.5" />
             <line
               x1={x(active.index)}
@@ -125,11 +148,11 @@ export function ImprovementChart({ runs, large = false }: { runs: Run[]; large?:
         <div className="legend">
           <span>
             <i className="series-main" />
-            Calidad evaluada
+            Calidad evaluada (modelo)
           </span>
           <span>
             <i className="series-base" />
-            Primera versión
+            Primera versión / regresión lineal
           </span>
         </div>
         <span>ITERACIÓN</span>

@@ -1,0 +1,37 @@
+name: Publish interface
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, phone-test]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: node -e 'if (!process.env.VITE_API_URL.startsWith("https://")) throw new Error("Pages requires an HTTPS API")' && npm run typecheck && npx vite build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://aeris-phone.136-118-8-128.sslip.io' }}
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deploy
+        uses: actions/deploy-pages@v4

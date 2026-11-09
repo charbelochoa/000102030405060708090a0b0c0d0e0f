@@ -23,6 +23,12 @@ export function Models({ router = false }: { router?: boolean }) {
   const { snapshot, refresh, notify } = useWorkspace()
   const [keys, setKeys] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState('')
+  const [catalog, setCatalog] = useState<{
+    provider: ProviderId
+    items: { id: string; name: string }[]
+  } | null>(null)
+  const [modelQuery, setModelQuery] = useState('')
+  const [prefill, setPrefill] = useState<{ id: string; name: string; provider: ProviderId }>()
   const [addModel, setAddModel] = useState(false)
   const [draft, setDraft] = useState<Model[] | null>(null)
   const settings = snapshot!.settings
@@ -54,6 +60,31 @@ export function Models({ router = false }: { router?: boolean }) {
   return (
     <>
       <SectionTitle title={router ? 'Router de modelos' : 'Proveedores y APIs'} />
+      {!router && (
+        <section className="panel lab-panel">
+          <header>
+            <h2>APIs disponibles</h2>
+          </header>
+          <p>
+            {settings.providers
+              .filter((p) => p.hasKey && p.enabled)
+              .map((p) => providers.find((x) => x.id === p.id)!.name)
+              .join(' · ') || 'Sin APIs conectadas y activas.'}
+          </p>
+          <details>
+            <summary>Historial de credenciales</summary>
+            {snapshot!.events
+              .filter((e) => e.type === 'provider')
+              .slice()
+              .reverse()
+              .map((e) => (
+                <p key={e.id}>
+                  <time>{new Date(e.createdAt).toLocaleString('es-MX')}</time> · {e.text}
+                </p>
+              ))}
+          </details>
+        </section>
+      )}
       {router && (
         <section className="panel settings-section">
           <div className="setting-row">
@@ -120,6 +151,25 @@ export function Models({ router = false }: { router?: boolean }) {
                 <i />
                 {config.hasKey ? 'Credencial configurada' : 'Sin conectar'}
               </div>
+              {config.hasKey && (
+                <button
+                  className="button small-button"
+                  disabled={saving === p.id}
+                  onClick={async () => {
+                    setSaving(p.id)
+                    try {
+                      setCatalog({ provider: p.id, items: await api(`/providers/${p.id}/models`) })
+                      setModelQuery('')
+                    } catch (e) {
+                      notify((e as Error).message, true)
+                    } finally {
+                      setSaving('')
+                    }
+                  }}
+                >
+                  Consultar modelos disponibles
+                </button>
+              )}
               {p.id === 'nvidia' && !config.freeTier && (
                 <p>Activa tu cuota gratuita o configura las tarifas de tu contrato.</p>
               )}
@@ -178,13 +228,79 @@ export function Models({ router = false }: { router?: boolean }) {
           )
         })}
       </div>
+      {catalog && (
+        <section className="panel lab-panel">
+          <header>
+            <h2>Catálogo de {providers.find((p) => p.id === catalog.provider)!.name}</h2>
+            <span>{catalog.items.length} modelos publicados</span>
+          </header>
+          <p>
+            El catálogo incluye capacidades distintas. Para ejecutar un modelo de chat, añádelo con
+            sus tarifas y capacidades verificadas.
+          </p>
+          <input
+            aria-label="Buscar modelos disponibles"
+            placeholder="Buscar modelo"
+            value={modelQuery}
+            onChange={(e) => setModelQuery(e.target.value)}
+          />
+          <div className="lab-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Modelo</th>
+                  <th>ID</th>
+                  <th>Configuración</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalog.items
+                  .filter((m) =>
+                    `${m.id} ${m.name}`.toLowerCase().includes(modelQuery.toLowerCase())
+                  )
+                  .map((m) => (
+                    <tr key={m.id}>
+                      <td>{m.name}</td>
+                      <td>
+                        <code>{m.id}</code>
+                      </td>
+                      <td>
+                        {settings.models.some(
+                          (x) => x.provider === catalog.provider && x.id === m.id
+                        ) ? (
+                          'Configurado'
+                        ) : (
+                          <button
+                            className="button small-button"
+                            onClick={() => {
+                              setPrefill({ ...m, provider: catalog.provider })
+                              setAddModel(true)
+                            }}
+                          >
+                            Añadir modelo
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       <section className="panel tariff-panel">
         <div className="panel-heading">
           <div>
             <h2>Tarifas por modelo</h2>
             <p>USD por millón de tokens. Tarifa estándar, antes de impuestos y extras.</p>
           </div>
-          <button className="button small-button" onClick={() => setAddModel(true)}>
+          <button
+            className="button small-button"
+            onClick={() => {
+              setPrefill(undefined)
+              setAddModel(true)
+            }}
+          >
             <Plus size={13} />
             Añadir modelo
           </button>
@@ -286,6 +402,8 @@ export function Models({ router = false }: { router?: boolean }) {
         tarifas.
       </p>
       <AddModel
+        key={prefill?.id || 'manual'}
+        prefill={prefill}
         open={addModel}
         onOpenChange={setAddModel}
         onSave={async (m) => {
@@ -300,16 +418,18 @@ export function Models({ router = false }: { router?: boolean }) {
 }
 
 function AddModel({
+  prefill,
   open,
   onOpenChange,
   onSave
 }: {
+  prefill?: { id: string; name: string; provider: ProviderId }
   open: boolean
   onOpenChange: (value: boolean) => void
   onSave: (model: Model) => Promise<void>
 }) {
   const { notify } = useWorkspace()
-  const [provider, setProvider] = useState<ProviderId>('deepseek')
+  const [provider, setProvider] = useState<ProviderId>(prefill?.provider || 'deepseek')
   const [tier, setTier] = useState<Model['tier']>('medium')
   const [vision, setVision] = useState(false)
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -346,12 +466,19 @@ function AddModel({
         <div className="form-grid">
           <label>
             Nombre
-            <input name="name" required maxLength={100} placeholder="DeepSeek Flash" />
+            <input
+              name="name"
+              defaultValue={prefill?.name}
+              required
+              maxLength={100}
+              placeholder="DeepSeek Flash"
+            />
           </label>
           <label>
             ID del modelo
             <input
               name="id"
+              defaultValue={prefill?.id}
               required
               pattern="[a-zA-Z0-9._:/-]{1,100}"
               placeholder="deepseek-flash"

@@ -25,6 +25,7 @@ import {
   Search,
   Settings2,
   Shield,
+  Smartphone,
   Sparkles,
   Terminal,
   Users,
@@ -39,6 +40,7 @@ import { Factory } from './Factory'
 import { Configuration, Models, Skills } from './Configuration'
 import { Agents, Files, TerminalView } from './WorkspaceViews'
 import { Lab } from './Lab'
+import { Phone } from './Phone'
 import { PixelStudio } from './Factory'
 import { Evolution } from './Evolution'
 import { ContextBrain } from './ContextBrain'
@@ -55,6 +57,7 @@ const navigation = [
   { id: 'metrics', label: 'Métricas y progreso', icon: Activity },
   { id: 'evolution', label: 'Evolución del sistema', icon: GitBranch },
   { id: 'factory', label: 'Estudio de agentes', icon: FactoryIcon },
+  { id: 'phone', label: 'Teléfono de clientes', icon: Smartphone },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'files', label: 'Archivos', icon: FileCode2 },
   { id: 'skills', label: 'Skills', icon: Sparkles },
@@ -69,9 +72,11 @@ export function App() {
   const engine = useEngine()
   const { snapshot, refresh, notify } = engine
   const [page, setPage] = useState(
-    location.pathname.startsWith('/app')
+    new URLSearchParams(location.search).get('page') === 'app' ||
+      location.pathname.startsWith('/app')
       ? 'app'
-      : location.pathname === '/login'
+      : new URLSearchParams(location.search).get('page') === 'login' ||
+          location.pathname === '/login'
         ? 'login'
         : 'landing'
   )
@@ -89,7 +94,7 @@ export function App() {
     history.pushState(
       {},
       '',
-      target === 'app' ? `/app#${view}` : target === 'login' ? '/login' : '/'
+      `${import.meta.env.BASE_URL}${target === 'app' ? `?page=app#${view}` : target === 'login' ? '?page=login' : ''}`
     )
     window.scrollTo(0, 0)
   }
@@ -97,7 +102,7 @@ export function App() {
     const next = navigation.some((n) => n.id === target) ? target : 'overview'
     setView(next)
     setMobileNav(false)
-    history.replaceState({}, '', `/app#${next}`)
+    history.replaceState({}, '', `${import.meta.env.BASE_URL}?page=app#${next}`)
     window.scrollTo(0, 0)
   }
   useEffect(() => {
@@ -120,9 +125,11 @@ export function App() {
   useEffect(() => {
     const listener = () => {
       setPage(
-        location.pathname.startsWith('/app')
+        new URLSearchParams(location.search).get('page') === 'app' ||
+          location.pathname.startsWith('/app')
           ? 'app'
-          : location.pathname === '/login'
+          : new URLSearchParams(location.search).get('page') === 'login' ||
+              location.pathname === '/login'
             ? 'login'
             : 'landing'
       )
@@ -179,7 +186,7 @@ export function App() {
           <aside className="sidebar">
             <a
               className="brand"
-              href="/"
+              href={import.meta.env.BASE_URL}
               onClick={(e) => {
                 e.preventDefault()
                 go('landing')
@@ -345,6 +352,7 @@ export function App() {
             </header>
             <div className="app-content">
               {view === 'lab' && <Lab />}
+              {view === 'phone' && <Phone />}
               {view === 'overview' && (
                 <Dashboard
                   onNew={() => setNewMission(true)}
@@ -471,7 +479,7 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
   return (
     <div className="landing">
       <header className="landing-nav">
-        <a className="brand" href="/">
+        <a className="brand" href={import.meta.env.BASE_URL}>
           <AerisMark />
           <span>AERIS</span>
         </a>
@@ -516,7 +524,7 @@ function Landing({ onEnter, onLogin }: { onEnter: () => void; onLogin: () => voi
         </section>
       </main>
       <footer className="landing-footer">
-        <a className="brand" href="/">
+        <a className="brand" href={import.meta.env.BASE_URL}>
           <AerisMark small />
           <span>AERIS</span>
         </a>

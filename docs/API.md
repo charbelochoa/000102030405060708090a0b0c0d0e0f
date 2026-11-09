@@ -1,5 +1,13 @@
 # Contrato HTTP
 
+`POST /runs` y `POST /phone/conversations` aceptan `coordination: "orchestrated" | "autonomous"` (por defecto `orchestrated`). Las misiones autónomas incluyen `tasks` con dependencias, estados y trabajador. [Funcionamiento y límites de ambos modos](EQUIPOS.md).
+
+Para una interfaz alojada en GitHub Pages, configura `AERIS_FRONTEND_URL` en el servidor y `VITE_API_URL` al compilar la interfaz. Los endpoints de login y registro devuelven `sessionToken`, válido como `Authorization: Bearer` y revocable por logout. Las sesiones permanecen aisladas por usuario. CORS admite únicamente el origen configurado; no se permiten comodines.
+
+`GET /providers/:id/models` consulta el catálogo del proveedor con la credencial guardada y requiere administrador. Devuelve identificadores y nombres; la configuración de tarifas y capacidades se realiza por separado.
+
+`GET /database/status` requiere administrador y describe la réplica Firebase mediante `configured`, `pending`, `updatedAt` y `error`. [Preparación de GCP y limitaciones](GCP.md).
+
 La API vive en `/api`. El navegador usa cookies HttpOnly. La CLI usa `Authorization: Bearer` con el token local de `.aeris/cli-token`. Las respuestas de error tienen `{ "error": "descripción" }`.
 
 | Método | Ruta                             | Uso                                                                 |
@@ -57,3 +65,13 @@ Todos los endpoints de esta tabla requieren sesión. Experimentos y cambios de v
 | POST | /versions/:id/restore | Restaura una versión validada antes del cierre |
 
 Los adjuntos de entrada usan name, type y data en base64. Una misión admite cinco archivos de hasta 5 MB. El motor devuelve errores de validación HTTP 400 y errores de ejecución HTTP 422. Una misión asíncrona que falla conserva el error recuperable en /runs/:id. La transcripción de la misión puede incluir datos de los archivos. Pertenece a la cuenta que ejecutó la misión.
+
+## Teléfono de clientes
+
+Requieren sesión. Cada conversación usa la sala `tel-ID` y cada mensaje del cliente crea una misión de una iteración, así que tokens, USD y latencia quedan en el mismo registro de uso.
+
+- `GET /api/phone/conversations`: conversaciones con mensajes, turnos y uso medido.
+- `POST /api/phone/conversations`: `{company, customer, scenario?, model?}`.
+- `POST /api/phone/conversations/:id/messages`: `{text, budget?}`. Responde 202; la respuesta de la empresa aparece como mensaje cuando termina la misión. Si falla, no se inventa texto.
+- `POST /api/phone/conversations/:id/rating`: `{resolved, score?, note?}`. Con `note` guarda una página `Lección de atención` en el Cerebro de contexto.
+- `GET /api/phone/export`: descarga las conversaciones en JSON.

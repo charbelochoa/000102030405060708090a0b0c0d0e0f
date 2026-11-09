@@ -10,6 +10,8 @@ release/
 *.tsbuildinfo
 coverage/
 artifacts/
+deploy/server.env
+deploy/.env
 Inspiracion/
 estilo pagina linear/
 claude-code-main/

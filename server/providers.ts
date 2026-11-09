@@ -1,7 +1,62 @@
 import { providers } from '../shared/catalog'
-import type { Attachment, Model, Usage } from '../shared/types'
+import type { Attachment, Model, ProviderId, Usage } from '../shared/types'
 import { getKey } from './store'
 import { normalizeUsage } from './accounting'
+
+export async function providerFetch(provider: ProviderId, url: string, init: RequestInit) {
+  try {
+    return await fetch(url, init)
+  } catch (error) {
+    if (init.signal?.aborted) throw error
+    const code = (error as { cause?: { code?: string } }).cause?.code || 'NETWORK_ERROR'
+    throw new Error(
+      `${provider}: no se pudo conectar con la API (${code}). Revisa la salida a Internet, DNS, proxy y permisos del proceso del servidor.`
+    )
+  }
+}
+
+export async function discoverModels(id: ProviderId) {
+  const provider = providers.find((p) => p.id === id)!
+  const key = getKey(id)
+  if (!key) throw new Error('Conecta una credencial antes de consultar modelos.')
+  const headers: Record<string, string> =
+    id === 'anthropic'
+      ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+      : id === 'google'
+        ? { 'x-goog-api-key': key }
+        : { Authorization: `Bearer ${key}` }
+  let url =
+    id === 'google'
+      ? 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000'
+      : provider.endpoint.replace(/\/(chat\/completions|messages)$/, '/models')
+  const items: { id: string; name: string }[] = []
+  const visited = new Set<string>()
+  while (url && !visited.has(url)) {
+    visited.add(url)
+    const response = await providerFetch(id, url, { headers, signal: AbortSignal.timeout(20000) })
+    if (!response.ok)
+      throw new Error(
+        `${provider.name}: catálogo HTTP ${response.status}. Revisa la credencial y los permisos.`
+      )
+    const body = (await response.json()) as any
+    for (const model of body.models || body.data || []) {
+      const modelId = String(model.id || model.name || '').replace(/^models\//, '')
+      if (/^[a-zA-Z0-9._:/-]{1,100}$/.test(modelId))
+        items.push({
+          id: modelId,
+          name: String(model.displayName || model.display_name || modelId)
+        })
+    }
+    const next = new URL(url)
+    if (id === 'google' && body.nextPageToken)
+      next.searchParams.set('pageToken', body.nextPageToken)
+    else if (id === 'anthropic' && body.has_more && body.last_id)
+      next.searchParams.set('after_id', body.last_id)
+    else break
+    url = next.href
+  }
+  return items.filter((item, index) => items.findIndex((m) => m.id === item.id) === index)
+}
 
 export interface ToolCall {
   id: string
@@ -100,7 +155,7 @@ export async function complete(
     headers['x-api-key'] = key
     headers['anthropic-version'] = '2023-06-01'
   } else headers.Authorization = `Bearer ${key}`
-  const response = await fetch(provider.endpoint, {
+  const response = await providerFetch(model.provider, provider.endpoint, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
