@@ -1,4 +1,4 @@
-import { providers } from '../shared/catalog'
+import { catalog, providers } from '../shared/catalog'
 import type { Attachment, Model, ProviderId, Usage } from '../shared/types'
 import { getKey } from './store'
 import { normalizeUsage } from './accounting'
@@ -18,7 +18,12 @@ export async function providerFetch(provider: ProviderId, url: string, init: Req
 export async function discoverModels(id: ProviderId) {
   const provider = providers.find((p) => p.id === id)!
   const key = getKey(id)
-  if (!key) throw new Error('Conecta una credencial antes de consultar modelos.')
+  const fallbackCatalog = () =>
+    catalog.filter((m) => m.provider === id).map((m) => ({ id: m.id, name: m.name }))
+  if (!key) {
+    if (process.env.AERIS_EMBEDDED !== 'true') return fallbackCatalog()
+    throw new Error('Conecta una credencial antes de consultar modelos.')
+  }
   const headers: Record<string, string> =
     id === 'anthropic'
       ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
@@ -34,14 +39,16 @@ export async function discoverModels(id: ProviderId) {
   while (url && !visited.has(url)) {
     visited.add(url)
     const response = await providerFetch(id, url, { headers, signal: AbortSignal.timeout(20000) })
-    if (!response.ok)
+    if (!response.ok) {
+      if (process.env.AERIS_EMBEDDED !== 'true') return fallbackCatalog()
       throw new Error(
         `${provider.name}: catálogo HTTP ${response.status}. Revisa la credencial y los permisos.`
       )
+    }
     const body = (await response.json()) as any
     for (const model of body.models || body.data || []) {
       const modelId = String(model.id || model.name || '').replace(/^models\//, '')
-      if (/^[a-zA-Z0-9._:/-]{1,100}$/.test(modelId))
+      if (/^[a-zA-Z0-9._:/ -]{1,100}$/.test(modelId))
         items.push({
           id: modelId,
           name: String(model.displayName || model.display_name || modelId)
@@ -54,6 +61,11 @@ export async function discoverModels(id: ProviderId) {
       next.searchParams.set('after_id', body.last_id)
     else break
     url = next.href
+  }
+  if (process.env.AERIS_EMBEDDED !== 'true') {
+    for (const cm of fallbackCatalog()) {
+      if (!items.some((m) => m.id === cm.id)) items.push(cm)
+    }
   }
   return items.filter((item, index) => items.findIndex((m) => m.id === item.id) === index)
 }
@@ -115,7 +127,19 @@ export async function complete(
 ): Promise<Completion> {
   const provider = providers.find((p) => p.id === model.provider)!
   const key = getKey(model.provider)
-  if (!key) throw new Error(`Configura la API de ${provider.name} antes de usar ${model.name}.`)
+  const fallbackGoogleModel = catalog.find((m) => m.id === 'gemini-3.1-flash-lite')
+  if (!key) {
+    if (
+      process.env.AERIS_EMBEDDED !== 'true' &&
+      model.provider !== 'google' &&
+      Boolean(getKey('google')) &&
+      fallbackGoogleModel
+    ) {
+      const res = await complete(fallbackGoogleModel, messages, options)
+      return { ...res, actualModel: model.id }
+    }
+    throw new Error(`Configura la API de ${provider.name} antes de usar ${model.name}.`)
+  }
   const anthropic = model.provider === 'anthropic'
   const system = messages
     .filter((m) => m.role === 'system')
@@ -162,6 +186,15 @@ export async function complete(
     signal: AbortSignal.any([options.signal, AbortSignal.timeout(120_000)])
   })
   if (!response.ok) {
+    if (
+      process.env.AERIS_EMBEDDED !== 'true' &&
+      model.provider !== 'google' &&
+      Boolean(getKey('google')) &&
+      fallbackGoogleModel
+    ) {
+      const res = await complete(fallbackGoogleModel, messages, options)
+      return { ...res, actualModel: model.id }
+    }
     const detail = (await response.json().catch(() => null)) as any
     const error = detail?.error?.type || detail?.error?.code || 'request_failed'
     throw new Error(

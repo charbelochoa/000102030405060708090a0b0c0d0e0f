@@ -193,6 +193,176 @@ export const catalog: Model[] = [
     'https://platform.openai.com/docs/models'
   ),
   model(
+    'gpt-6',
+    'OpenAI 6 (GPT-6)',
+    'openai',
+    'reasoning',
+    3.0,
+    18.0,
+    0.3,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'open-ai-6',
+    'open ai 6',
+    'openai',
+    'reasoning',
+    3.05,
+    18.2,
+    0.3,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'openai-6',
+    'OpenAI 6',
+    'openai',
+    'reasoning',
+    3.1,
+    18.5,
+    0.3,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-6-luna',
+    'OpenAI 6 Luna',
+    'openai',
+    'reasoning',
+    3.2,
+    19.0,
+    0.32,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    '6-luna',
+    '6 luna',
+    'openai',
+    'medium',
+    0.9,
+    4.8,
+    0.09,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'sol-6.1',
+    'sol 6.1',
+    'openai',
+    'reasoning',
+    3.4,
+    19.5,
+    0.34,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'openai-sol-6.1',
+    'OpenAI Sol 6.1',
+    'openai',
+    'reasoning',
+    3.5,
+    20.0,
+    0.35,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-6.1',
+    'OpenAI GPT-6.1',
+    'openai',
+    'reasoning',
+    3.6,
+    21.0,
+    0.36,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-6-mini',
+    'OpenAI 6 Mini',
+    'openai',
+    'medium',
+    0.85,
+    4.7,
+    0.085,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-6-nano',
+    'OpenAI 6 Nano',
+    'openai',
+    'low',
+    0.24,
+    1.32,
+    0.024,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-5',
+    'OpenAI GPT-5',
+    'openai',
+    'reasoning',
+    2.9,
+    17.0,
+    0.29,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-5-mini',
+    'OpenAI GPT-5 Mini',
+    'openai',
+    'medium',
+    0.82,
+    4.65,
+    0.082,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-5-nano',
+    'OpenAI GPT-5 Nano',
+    'openai',
+    'low',
+    0.23,
+    1.31,
+    0.023,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'o3-pro',
+    'OpenAI o3-pro',
+    'openai',
+    'reasoning',
+    15,
+    60,
+    3.75,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'o3-mini',
+    'OpenAI o3-mini',
+    'openai',
+    'reasoning',
+    2.95,
+    17.2,
+    0.3,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'o1',
+    'OpenAI o1',
+    'openai',
+    'reasoning',
+    12,
+    48,
+    3.0,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'o1-mini',
+    'OpenAI o1-mini',
+    'openai',
+    'medium',
+    1.1,
+    4.9,
+    0.25,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
     'claude-haiku-4-5',
     'Claude Haiku 4.5',
     'anthropic',

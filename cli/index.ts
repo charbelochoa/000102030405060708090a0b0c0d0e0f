@@ -12,6 +12,7 @@ import {
   buildRsiTrace,
   renderAsciiPerformanceChart,
   renderAsciiProgressBar,
+  renderAsciiRsiLoopDiagram,
   rsiStages,
   type RsiTraceLine
 } from '../shared/phone'
@@ -24,7 +25,7 @@ const program = new Command()
   .description('AERIS · agentes, contexto, métricas y evolución.')
   .version('1.1.0')
   .enablePositionalOptions()
-const endpoint = (process.env.AERIS_URL || 'http://127.0.0.1:4318').replace(/\/$/, '')
+let endpoint = (process.env.AERIS_URL || 'http://127.0.0.1:4318').replace(/\/$/, '')
 let token = ''
 try {
   token = (
@@ -40,6 +41,23 @@ try {
   ).trim()
 } catch {}
 
+async function fetchFromEndpoint(
+  baseUrl: string,
+  path: string,
+  body?: unknown,
+  method = body === undefined ? 'GET' : 'POST'
+): Promise<Response> {
+  return fetch(`${baseUrl}/api${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(150000)
+  })
+}
+
 async function request<T = any>(
   path: string,
   body?: unknown,
@@ -47,19 +65,39 @@ async function request<T = any>(
 ): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${endpoint}/api${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(150000)
-    })
+    response = await fetchFromEndpoint(endpoint, path, body, method)
   } catch {
-    throw new Error(
-      `No se pudo conectar al motor ${endpoint}. Inicia npm run server o npm run dev.`
-    )
+    if (!process.env.AERIS_URL && endpoint === 'http://127.0.0.1:4318') {
+      try {
+        endpoint = 'http://127.0.0.1:4330'
+        response = await fetchFromEndpoint(endpoint, path, body, method)
+      } catch {
+        throw new Error(
+          `No se pudo conectar al motor ${endpoint}. Inicia npm run server o npm run dev.`
+        )
+      }
+    } else {
+      throw new Error(
+        `No se pudo conectar al motor ${endpoint}. Inicia npm run server o npm run dev.`
+      )
+    }
+  }
+  if (response.status === 401) {
+    try {
+      const authRes = await fetch(`${endpoint}/api/auth/local`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: AbortSignal.timeout(10000)
+      })
+      if (authRes.ok) {
+        const authData = (await authRes.json()) as any
+        if (authData.sessionToken) {
+          token = authData.sessionToken
+          response = await fetchFromEndpoint(endpoint, path, body, method)
+        }
+      }
+    } catch {}
   }
   const result = (await response.json()) as any
   if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`)
@@ -70,11 +108,15 @@ const print = (value: unknown): void => {
   process.stdout.write(`${typeof value === 'string' ? value : JSON.stringify(value, null, 2)}\n`)
 }
 const banner = [
-  '    _    _____ ____  ___ ____',
-  '   / \\  | ____|  _ \\|_ _/ ___|',
-  '  / _ \\ |  _| | |_) || |\\___ \\',
-  ' / ___ \\| |___|  _ < | | ___) |',
-  '/_/   \\_\\_____|_| \\_\\___|____/'
+  '+==============================================================================================+',
+  '|      _      _____   ____    ___   ____        ____    ____    ___                            |',
+  '|     / \\    | ____| |  _ \\  |_ _| / ___|      |  _ \\  / ___|  |_ _|                           |',
+  '|    / _ \\   |  _|   | |_) |  | |  \\___ \\      | |_) | \\___ \\   | |                            |',
+  '|   / ___ \\  | |___  |  _ <   | |   ___) |     |  _ <   ___) |  | |                            |',
+  '|  /_/   \\_\\ |_____| |_| \\_\\ |___| |____/      |_| \\_\\ |____/  |___|   ENGINE v1.1.0           |',
+  '|                                                                                              |',
+  '|  RECURSIVE SELF-IMPROVEMENT (RSI)  |  MULTI-AGENT & SINGLE-API  |  EXACT DB STATISTICAL EVAL |',
+  '+==============================================================================================+'
 ].join('\n')
 
 function renderTraceLine(line: RsiTraceLine) {
@@ -486,27 +528,35 @@ program
     }
     const rep = await request<any>('/kavak/evals')
     print(chalk.green(banner))
-    print(chalk.bold('\nCIRCUITO CERRADO DEL LOOP RSI (7 ETAPAS):'))
-    print(
-      chalk.cyan(
-        '  [01 Contexto] -> [02 1a Pasada] -> [03 Router] -> [04 Orquestador] -> [05 BD Kavak] -> [06 Eval Estadística] -> [07 Memoria RSI] --(lección t+1)--> [01]'
-      )
-    )
-    for (const st of rep.loopStageCounts || []) {
-      print(
-        `  [${st.id}] ${st.name.padEnd(26)} (${String(st.count).padStart(2)}x) · ${st.whatWeDo} [${st.detail}]`
-      )
-    }
+    print(chalk.cyan('\n' + renderAsciiRsiLoopDiagram(rep.loopStageCounts || [])))
     if (rep.points?.length) {
       print(chalk.cyan('\n' + renderAsciiPerformanceChart(rep.points, 7, 7)))
     }
     if (rep.evalRows?.length) {
-      print(chalk.yellow('\nTABLA DE EVALS Y ERROR ESTADÍSTICO (RMSE / MAPE / σ / F1):'))
-      for (const r of rep.evalRows) {
+      print(chalk.yellow('\n+==============================================================================================+'))
+      print(chalk.yellow('| DESGLOSE ESTADISTICO DE EVALS POR EXPEDIENTE (RMSE / MAPE / DESV.EST / F1-SCORE)             |'))
+      print(chalk.yellow('+==============================================================================================+'))
+      for (const r of rep.evalRows.filter((row: any) => row.kavakEval || row.score > 0)) {
         const kv = r.kavakEval
         print(
-          `  [C${r.cycleOrder}] ${r.title} · ${r.model} (${r.tier}) -> Decisión: ${r.leaderDecision}\n    Score=${r.score}/100${kv ? ` · RMSE=${kv.rmse.toFixed(3)} · MAPE=${kv.mape.toFixed(1)}% · σ=${kv.stdError.toFixed(3)} · P=${kv.precision.toFixed(2)} · R=${kv.recall.toFixed(2)} · F1=${kv.f1.toFixed(2)}` : ''}`
+          chalk.white(
+            `  [C${r.cycleOrder}] ${r.title}\n    Modelo: ${r.model} (${r.tier}) -> Decision Lider: ${r.leaderDecision} | Tokens: ${r.tokens}`
+          )
         )
+        if (kv) {
+          print(
+            chalk.green(
+              `    Score=${r.score}/100 | RMSE=${kv.rmse.toFixed(4)} | MAPE=${kv.mape.toFixed(2)}% | s=${kv.stdError.toFixed(4)} | P=${kv.precision.toFixed(2)} | R=${kv.recall.toFixed(2)} | F1=${kv.f1.toFixed(2)}`
+            )
+          )
+          const residuals = (kv.numericResiduals || [])
+            .map(
+              (nr: any) =>
+                `${nr.field}: esp=${nr.expected} obs=${nr.observed ?? 'N/A'} (e=${(nr.relativeError * 100).toFixed(0)}%)`
+            )
+            .join(' | ')
+          if (residuals) print(chalk.gray(`    Residuales: ${residuals}`))
+        }
       }
     }
   })
@@ -710,8 +760,16 @@ program
         }
         if (text === '/help') {
           print(
-            '/files [ruta] · /open ruta · /search texto · /write ruta contenido\n/worktree nombre · /config · /metrics · /kavak [simulate|consulta] · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
+            '/evals · /metrics · /kavak [simulate|consulta] · /files [ruta] · /open ruta · /search texto\n/write ruta contenido · /worktree nombre · /config · /model ID\n/message destino texto · /messages · /stop · /exit\nTodo otro texto inicia una misión.'
           )
+          return
+        }
+        if (text === '/evals') {
+          const rep = await request<any>('/kavak/evals')
+          print(chalk.cyan(renderAsciiRsiLoopDiagram(rep.loopStageCounts || [])))
+          if (rep.points?.length) {
+            print(chalk.cyan('\n' + renderAsciiPerformanceChart(rep.points, 7, 7)))
+          }
           return
         }
         if (text === '/kavak' || text.startsWith('/kavak ')) {

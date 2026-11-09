@@ -174,7 +174,7 @@ if (migrating) {
 }
 for (const p of defaults.providers)
   if (!data.settings.providers.some((s) => s.id === p.id)) data.settings.providers.push({ ...p })
-for (const m of defaults.models.filter((m) => ['nvidia', 'local'].includes(m.provider)))
+for (const m of defaults.models)
   if (!data.settings.models.some((s) => s.id === m.id)) data.settings.models.push({ ...m })
 for (const run of data.runs) {
   if (run.status === 'running' || run.status === 'queued') {

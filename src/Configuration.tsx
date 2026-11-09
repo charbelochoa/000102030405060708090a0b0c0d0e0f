@@ -435,18 +435,21 @@ function AddModel({
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
+    const rawId = String(form.get('id') || '').trim()
+    const rawName = String(form.get('name') || rawId).trim()
+    const rawSource = String(form.get('source') || '').trim() || 'https://platform.openai.com/docs/models'
     try {
       await onSave({
-        id: String(form.get('id')),
-        name: String(form.get('name')),
+        id: rawId,
+        name: rawName,
         provider,
         tier,
         vision,
-        inputPrice: Number(form.get('input')),
-        outputPrice: Number(form.get('output')),
-        cachedPrice: Number(form.get('cached')),
-        cacheWritePrice: Number(form.get('write')),
-        source: String(form.get('source')),
+        inputPrice: Number(form.get('input') || 0.5),
+        outputPrice: Number(form.get('output') || 1.5),
+        cachedPrice: Number(form.get('cached') || 0.05),
+        cacheWritePrice: Number(form.get('write') || 0.5),
+        source: rawSource,
         checkedAt: new Date().toISOString().slice(0, 10)
       })
       onOpenChange(false)
@@ -471,7 +474,7 @@ function AddModel({
               defaultValue={prefill?.name}
               required
               maxLength={100}
-              placeholder="DeepSeek Flash"
+              placeholder="OpenAI 6 Luna / Sol 6.1"
             />
           </label>
           <label>
@@ -480,8 +483,8 @@ function AddModel({
               name="id"
               defaultValue={prefill?.id}
               required
-              pattern="[a-zA-Z0-9._:/-]{1,100}"
-              placeholder="deepseek-flash"
+              maxLength={100}
+              placeholder="gpt-6-luna o sol-6.1"
             />
           </label>
           <label>
@@ -506,24 +509,24 @@ function AddModel({
         <div className="form-grid">
           <label>
             Entrada / 1 M tokens
-            <input name="input" type="number" min="0" max="1000" step="0.0001" required />
+            <input name="input" type="number" min="0" max="1000" step="0.0001" defaultValue="0.5" required />
           </label>
           <label>
             Salida / 1 M tokens
-            <input name="output" type="number" min="0" max="1000" step="0.0001" required />
+            <input name="output" type="number" min="0" max="1000" step="0.0001" defaultValue="1.5" required />
           </label>
           <label>
             Lectura de caché / 1 M
-            <input name="cached" type="number" min="0" max="1000" step="0.0001" required />
+            <input name="cached" type="number" min="0" max="1000" step="0.0001" defaultValue="0.05" required />
           </label>
           <label>
             Escritura de caché / 1 M
-            <input name="write" type="number" min="0" max="1000" step="0.0001" required />
+            <input name="write" type="number" min="0" max="1000" step="0.0001" defaultValue="0.5" required />
           </label>
         </div>
         <label>
           Fuente de precios
-          <input name="source" type="url" required placeholder="https://api-docs.deepseek.com/…" />
+          <input name="source" type="text" defaultValue="https://platform.openai.com/docs/models" placeholder="https://platform.openai.com/docs/models" />
         </label>
         <div className="setting-row">
           <span>Admite imágenes</span>

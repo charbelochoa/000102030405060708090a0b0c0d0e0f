@@ -50,7 +50,7 @@ export function Phone() {
   const available = useMemo(
     () =>
       (snapshot?.settings.models || []).filter((m) =>
-        snapshot?.settings.providers.some((p) => p.id === m.provider && p.enabled && p.hasKey)
+        snapshot?.settings.providers.some((p) => p.id === m.provider && p.enabled)
       ),
     [snapshot?.settings]
   )

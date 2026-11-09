@@ -43,8 +43,8 @@ import {
 const providerId = z.enum(['openai', 'anthropic', 'google', 'xai', 'deepseek', 'nvidia', 'local'])
 const number = (min: number, max: number) => z.number().finite().min(min).max(max)
 const modelSchema = z.object({
-  id: z.string().regex(/^[a-zA-Z0-9._:/-]{1,100}$/),
-  name: z.string().min(1).max(100),
+  id: z.string().trim().regex(/^[a-zA-Z0-9._:/ -]{1,100}$/),
+  name: z.string().trim().min(1).max(100),
   provider: providerId,
   tier: z.enum(['low', 'medium', 'high', 'reasoning']),
   inputPrice: number(0, 1000),
@@ -52,7 +52,7 @@ const modelSchema = z.object({
   cachedPrice: number(0, 1000),
   cacheWritePrice: number(0, 1000),
   vision: z.boolean(),
-  source: z.string().url(),
+  source: z.string().min(1).max(300).default('https://platform.openai.com/docs/models'),
   checkedAt: z.string().max(20)
 })
 const newRunSchema = z.object({
@@ -324,7 +324,7 @@ export function createApp() {
           minDelta: number(0.1, 20).optional(),
           allowWrites: z.boolean().optional(),
           allowCommands: z.boolean().optional(),
-          models: z.array(modelSchema).min(1).max(60).optional(),
+          models: z.array(modelSchema).min(1).max(250).optional(),
           providers: z
             .array(
               z.object({

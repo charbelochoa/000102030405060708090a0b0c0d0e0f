@@ -221,9 +221,12 @@ async function request(
 }
 
 function availableModels(run: Run) {
+  const anyActiveKey =
+    process.env.AERIS_EMBEDDED !== 'true' &&
+    data.settings.providers.some((p) => p.enabled && Boolean(getKey(p.id)))
   return data.settings.models.filter(
     (m) =>
-      getKey(m.provider) &&
+      (getKey(m.provider) || anyActiveKey) &&
       (m.provider !== 'nvidia' ||
         m.inputPrice + m.outputPrice > 0 ||
         data.settings.providers.find((p) => p.id === 'nvidia')?.freeTier) &&
@@ -232,12 +235,27 @@ function availableModels(run: Run) {
   )
 }
 
+function findMatchingModel(models: Model[], query: string): Model | undefined {
+  const q = query.trim().toLowerCase()
+  const qSlug = q.replace(/\s+/g, '-')
+  return (
+    models.find((m) => m.id === query) ||
+    models.find(
+      (m) =>
+        m.id.toLowerCase() === q ||
+        m.id.toLowerCase() === qSlug ||
+        m.name.toLowerCase() === q ||
+        m.name.toLowerCase().replace(/\s+/g, '-') === qSlug
+    )
+  )
+}
+
 async function chooseModel(run: Run, signal: AbortSignal) {
   const models = availableModels(run)
   if (!models.length)
     throw new Error('No hay un proveedor configurado. Conecta una API en Configuración.')
   if (run.model !== 'auto') {
-    const chosen = models.find((m) => m.id === run.model)
+    const chosen = findMatchingModel(models, run.model)
     if (!chosen) throw new Error('El modelo seleccionado no está disponible o no admite imágenes.')
     return chosen
   }
@@ -909,14 +927,14 @@ async function executeTeam(run: Run, signal: AbortSignal) {
   if (!models.length)
     throw new Error('No hay un proveedor configurado. Conecta una API en Configuración.')
   const automatic = run.model === 'auto'
-  let builder = automatic ? rankModel(models, 'low') : models.find((m) => m.id === run.model)
+  let builder = automatic ? rankModel(models, 'low') : findMatchingModel(models, run.model)
   if (!builder) throw new Error('El modelo seleccionado no está disponible o no admite imágenes.')
   if (run.reviewer === 'none') throw new Error('El equipo autónomo necesita un revisor.')
   if (
     run.reviewer !== 'auto' &&
     run.reviewer !== 'same' &&
     run.reviewer !== '' &&
-    !models.some((m) => m.id === run.reviewer)
+    !findMatchingModel(models, run.reviewer)
   )
     throw new Error('El modelo revisor no está disponible.')
   const singleModelMode =

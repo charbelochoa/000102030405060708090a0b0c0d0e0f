@@ -234,6 +234,60 @@ export interface PerformancePoint {
   model?: string
   tier?: string
   leaderDecision?: string
+  rmse?: number
+  mape?: number
+  f1?: number
+}
+
+export interface RsiStageSummaryItem {
+  id: string
+  name: string
+  whatWeDo: string
+  count: number
+  detail: string
+}
+
+export function renderAsciiRsiLoopDiagram(stages?: RsiStageSummaryItem[]): string {
+  const countOf = (id: string) => {
+    const found = stages?.find((s) => s.id === id)
+    return found ? `${String(found.count).padStart(2, '0')}x` : 'OK '
+  }
+  const lines = [
+    '+==============================================================================================+',
+    '|                       CIRCUITO CERRADO DEL LOOP RSI (7 ETAPAS EN VIVO)                       |',
+    '+==============================================================================================+',
+    '|                                                                                              |',
+    `|  +--------------------+     +--------------------+     +--------------------+                |`,
+    `|  | [01] CONTEXTO RSI  |====>| [02] 1a PASADA     |====>| [03] ROUTER COGNIT.|                |`,
+    `|  | Errores y Reglas   |     | Skills + Caveman   |     | low -> med -> high |                |`,
+    `|  | Consultas: (${countOf('01')})   |     | Ejecuciones: (${countOf('02')}) |     | Escalados:   (${countOf('03')}) |                |`,
+    `|  +--------------------+     +--------------------+     +--------------------+                |`,
+    '|            ^                                                      |                          |',
+    '|            |                                                      v                          |',
+    '|            | (Inyecta regla correctiva t+1)            +--------------------+                |',
+    '|            | (Reduce RMSE y MAPE en sig. ciclo)        | [04] COORDINACION  |                |',
+    '|            |                                           | Orquestador / Team |                |',
+    `|            |                                           | Misiones:    (${countOf('04')}) |                |`,
+    '|            |                                           +--------------------+                |',
+    '|            |                                                      |                          |',
+    '|            |                                                      v                          |',
+    `|  +--------------------+     +--------------------+     +--------------------+                |`,
+    `|  | [07] MEMORIA RSI   |<====| [06] EVAL + LIDER  |<====| [05] HERRAMIENTAS  |                |`,
+    `|  | Bitacora de Ciclos |     | RMSE / MAPE / F1   |     | query_kavak_db SQL |                |`,
+    `|  | Lecciones: (${countOf('07')})   |     | Evaluadas:   (${countOf('06')}) |     | Llamadas BD: (${countOf('05')}) |                |`,
+    `|  +--------------------+     +--------------------+     +--------------------+                |`,
+    '|                                                                                              |',
+    '+==============================================================================================+'
+  ]
+  if (stages?.length) {
+    lines.push('| DETALLE OPERATIVO POR ETAPA DEL LOOP:                                                        |')
+    for (const st of stages) {
+      const row = `[${st.id}] ${st.name.padEnd(23, ' ')} (${String(st.count).padStart(2, ' ')}x) | ${st.whatWeDo}`
+      lines.push(`|   ${row.slice(0, 90).padEnd(90, ' ')} |`)
+    }
+    lines.push('+==============================================================================================+')
+  }
+  return lines.join('\n')
 }
 
 export interface PerformanceTrend {
@@ -351,16 +405,28 @@ export function renderAsciiPerformanceChart(
     return `${progress}\nSin ciclos evaluados todavía para graficar desempeño.`
   }
   const trend = computePerformanceTrend(points)
-  const rows = 8
-  const cols = Math.min(points.length, 16)
+  const rows = 10
+  const cols = Math.min(points.length, 10)
   const slice = points.slice(-cols)
-  const grid: string[][] = Array.from({ length: rows }, () => Array(cols * 4).fill(' '))
+  const colWidth = 8
+  const gridWidth = cols * colWidth
+  const grid: string[][] = Array.from({ length: rows }, () => Array(gridWidth).fill(' '))
+  for (let r = 0; r < rows; r++) {
+    for (let x = 0; x < gridWidth; x++) {
+      if (r % 2 === 0 && x % 2 === 0) grid[r][x] = ':'
+    }
+  }
   for (let i = 0; i < cols; i++) {
-    const x = i * 4 + 1
+    const center = i * colWidth + 3
     const actualY = Math.max(
       0,
       Math.min(rows - 1, rows - 1 - Math.round((slice[i].score / 100) * (rows - 1)))
     )
+    for (let r = rows - 1; r > actualY; r--) {
+      grid[r][center - 1] = '|'
+      grid[r][center] = '#'
+      grid[r][center + 1] = '|'
+    }
     const regScore = Math.max(
       0,
       Math.min(100, trend.intercept + trend.slope * (points.length - cols + i + 1))
@@ -369,23 +435,78 @@ export function renderAsciiPerformanceChart(
       0,
       Math.min(rows - 1, rows - 1 - Math.round((regScore / 100) * (rows - 1)))
     )
-    if (slice.length > 1) grid[regY][x] = '.'
-    grid[actualY][x] = '*'
+    if (slice.length > 1) {
+      grid[regY][center - 1] = '('
+      grid[regY][center] = '.'
+      grid[regY][center + 1] = ')'
+    }
+    const rmseVal =
+      slice[i].rmse !== undefined ? slice[i].rmse! * 100 : Math.max(0, 100 - slice[i].score)
+    const errY = Math.max(
+      0,
+      Math.min(rows - 1, rows - 1 - Math.round((Math.min(100, rmseVal) / 100) * (rows - 1)))
+    )
+    if (errY !== actualY) {
+      grid[errY][center - 1] = '['
+      grid[errY][center] = 'x'
+      grid[errY][center + 1] = ']'
+    }
+    grid[actualY][center - 1] = '['
+    grid[actualY][center] = '*'
+    grid[actualY][center + 1] = ']'
   }
-  const lines: string[] = [progress, trend.summary, '']
+  const firstRmse =
+    slice[0].rmse !== undefined ? slice[0].rmse! : Number(((100 - slice[0].score) / 100).toFixed(3))
+  const lastRmse =
+    slice[cols - 1].rmse !== undefined
+      ? slice[cols - 1].rmse!
+      : Number(((100 - slice[cols - 1].score) / 100).toFixed(3))
+  const lines: string[] = [
+    '+==============================================================================================+',
+    `| ${progress.padEnd(92, ' ')} |`,
+    `| ${trend.summary.slice(0, 92).padEnd(92, ' ')} |`,
+    `| Reduccion de Error Estadistico (RMSE): ${firstRmse.toFixed(4)} ---> ${lastRmse.toFixed(4)}  |  R^2=${trend.rSquared.toFixed(3)}  |  Pendiente=${trend.slope >= 0 ? '+' : ''}${trend.slope.toFixed(2)} pts/ciclo`.padEnd(
+      95,
+      ' '
+    ) + '|',
+    '+==============================================================================================+',
+    ''
+  ]
   for (let r = 0; r < rows; r++) {
     const tick = Math.round(100 - (r / (rows - 1)) * 100)
-    lines.push(`${String(tick).padStart(3, ' ')} | ${grid[r].join('')}`)
+    lines.push(`  ${String(tick).padStart(3, ' ')}% | ${grid[r].join('')} |`)
   }
-  lines.push(`    +${'-'.repeat(cols * 4)}`)
+  lines.push(`       +${'-'.repeat(gridWidth)}-+`)
   lines.push(
-    `     ${slice.map((p) => `C${String(p.cycle).padEnd(3, ' ')}`).join('')}`
+    `        ${slice.map((p) => `  C${String(p.cycle).padEnd(colWidth - 3, ' ')}`).join('')}`
   )
-  lines.push('     Leyenda: (*) evaluación del ciclo   (.) recta de regresión lineal')
+  lines.push(
+    '  Leyenda: [*] Score real del ciclo   |#| Barra de desempeno   (.) Recta regresion lineal   [x] Error RMSE%'
+  )
+  lines.push('')
+  lines.push(
+    '+-------+---------+--------------+----------+----------+--------+----------------------+----------------+'
+  )
+  lines.push(
+    '| CICLO |  SCORE  | PROGRESO     |   RMSE   |   MAPE   |   F1   | MODELO (TIER)        | DECISION LIDER |'
+  )
+  lines.push(
+    '+-------+---------+--------------+----------+----------+--------+----------------------+----------------+'
+  )
   for (const p of slice) {
+    const miniFilled = Math.max(0, Math.min(10, Math.round(p.score / 10)))
+    const miniBar = `[${'#'.repeat(miniFilled)}${'-'.repeat(10 - miniFilled)}]`
+    const rmseStr = (p.rmse !== undefined ? p.rmse : (100 - p.score) / 100).toFixed(4)
+    const mapeStr = `${(p.mape !== undefined ? p.mape : 100 - p.score).toFixed(1)}%`
+    const f1Str = (p.f1 !== undefined ? p.f1 : p.score / 100).toFixed(2)
+    const modelStr = `${p.model || 'llm'}${p.tier ? ` (${p.tier})` : ''}`.slice(0, 20)
+    const decStr = (p.leaderDecision || 'accept').slice(0, 14)
     lines.push(
-      `     C${p.cycle}: ${p.score.toFixed(1)}/100${p.model ? ` · ${p.model}` : ''}${p.tier ? ` (${p.tier})` : ''}${p.leaderDecision ? ` -> ${p.leaderDecision}` : ''}${p.tokens ? ` · ${p.tokens} tok` : ''}`
+      `| C${String(p.cycle).padEnd(4, ' ')} | ${p.score.toFixed(1).padStart(7, ' ')} | ${miniBar} | ${rmseStr.padStart(8, ' ')} | ${mapeStr.padStart(8, ' ')} | ${f1Str.padStart(6, ' ')} | ${modelStr.padEnd(20, ' ')} | ${decStr.padEnd(14, ' ')} |`
     )
   }
+  lines.push(
+    '+-------+---------+--------------+----------+----------+--------+----------------------+----------------+'
+  )
   return lines.join('\n')
 }
