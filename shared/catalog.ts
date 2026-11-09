@@ -75,7 +75,8 @@ const model = (
   outputPrice: number,
   cachedPrice: number,
   source: string,
-  cacheWritePrice = inputPrice
+  cacheWritePrice = inputPrice,
+  vision = true
 ): Model => ({
   id,
   name,
@@ -86,7 +87,7 @@ const model = (
   cachedPrice,
   cacheWritePrice,
   source,
-  vision: true,
+  vision,
   checkedAt: '2026-11-06'
 })
 
@@ -122,6 +123,76 @@ export const catalog: Model[] = [
     'https://developers.openai.com/api/docs/models/gpt-5.4-mini'
   ),
   model(
+    'gpt-4.1-nano',
+    'GPT-4.1 nano',
+    'openai',
+    'low',
+    0.22,
+    1.3,
+    0.025,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-4.1-mini',
+    'GPT-4.1 mini',
+    'openai',
+    'medium',
+    0.8,
+    4.6,
+    0.1,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-4.1',
+    'GPT-4.1',
+    'openai',
+    'reasoning',
+    2.6,
+    15.5,
+    0.5,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-4o-mini',
+    'GPT-4o mini',
+    'openai',
+    'low',
+    0.25,
+    1.35,
+    0.075,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'gpt-4o',
+    'GPT-4o',
+    'openai',
+    'reasoning',
+    2.75,
+    16,
+    1.25,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'o4-mini',
+    'OpenAI o4-mini',
+    'openai',
+    'reasoning',
+    2.8,
+    16.5,
+    0.275,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
+    'o3',
+    'OpenAI o3',
+    'openai',
+    'reasoning',
+    10,
+    40,
+    2.5,
+    'https://platform.openai.com/docs/models'
+  ),
+  model(
     'claude-haiku-4-5',
     'Claude Haiku 4.5',
     'anthropic',
@@ -131,6 +202,17 @@ export const catalog: Model[] = [
     0.1,
     'https://platform.claude.com/docs/en/about-claude/pricing',
     1.25
+  ),
+  model(
+    'claude-sonnet-4-6',
+    'Claude Sonnet 4.6',
+    'anthropic',
+    'medium',
+    3,
+    15,
+    0.3,
+    'https://platform.claude.com/docs/en/about-claude/pricing',
+    3.75
   ),
   model(
     'claude-sonnet-5-5',
@@ -144,6 +226,17 @@ export const catalog: Model[] = [
     2.5
   ),
   model(
+    'claude-opus-4-6',
+    'Claude Opus 4.6',
+    'anthropic',
+    'reasoning',
+    5,
+    25,
+    0.5,
+    'https://platform.claude.com/docs/en/about-claude/pricing',
+    6.25
+  ),
+  model(
     'gemini-3.1-flash-lite',
     'Gemini 3.1 Flash-Lite',
     'google',
@@ -153,33 +246,199 @@ export const catalog: Model[] = [
     0.025,
     'https://ai.google.dev/gemini-api/docs/pricing'
   ),
-  {
-    ...model(
-      'qwen2.5-0.5b-instruct',
-      'Qwen2.5 0.5B',
-      'local',
-      'low',
-      0,
-      0,
-      0,
-      'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF'
-    ),
-    vision: false
-  },
-  {
-    ...model(
-      'meta/llama-3.3-70b-instruct',
-      'Llama 3.3 70B',
-      'nvidia',
-      'medium',
-      0,
-      0,
-      0,
-      'https://build.nvidia.com/meta/llama-3_3-70b-instruct'
-    ),
-    vision: false
-  },
-  model('grok-4.7', 'Grok 4.7', 'xai', 'high', 2, 6, 2, 'https://docs.x.ai/developers/models')
+  model(
+    'gemini-2.5-flash',
+    'Gemini 2.5 Flash',
+    'google',
+    'low',
+    0.3,
+    2.5,
+    0.03,
+    'https://ai.google.dev/gemini-api/docs/pricing'
+  ),
+  model(
+    'gemini-3.1-flash',
+    'Gemini 3.1 Flash',
+    'google',
+    'medium',
+    0.5,
+    3,
+    0.05,
+    'https://ai.google.dev/gemini-api/docs/pricing'
+  ),
+  model(
+    'gemini-2.5-pro',
+    'Gemini 2.5 Pro',
+    'google',
+    'high',
+    1.25,
+    10,
+    0.125,
+    'https://ai.google.dev/gemini-api/docs/pricing'
+  ),
+  model(
+    'gemini-3.1-pro',
+    'Gemini 3.1 Pro',
+    'google',
+    'reasoning',
+    2,
+    12,
+    0.2,
+    'https://ai.google.dev/gemini-api/docs/pricing'
+  ),
+  model(
+    'deepseek-chat',
+    'DeepSeek V3.2 Chat',
+    'deepseek',
+    'medium',
+    0.27,
+    1.1,
+    0.07,
+    'https://api-docs.deepseek.com/quick_start/pricing',
+    0.27,
+    false
+  ),
+  model(
+    'deepseek-reasoner',
+    'DeepSeek R1 Reasoner',
+    'deepseek',
+    'reasoning',
+    0.55,
+    2.19,
+    0.14,
+    'https://api-docs.deepseek.com/quick_start/pricing',
+    0.55,
+    false
+  ),
+  model(
+    'grok-3-mini',
+    'Grok 3 Mini',
+    'xai',
+    'low',
+    0.3,
+    0.5,
+    0.075,
+    'https://docs.x.ai/developers/models',
+    0.3,
+    false
+  ),
+  model(
+    'grok-4-fast',
+    'Grok 4 Fast',
+    'xai',
+    'medium',
+    0.8,
+    3.2,
+    0.2,
+    'https://docs.x.ai/developers/models'
+  ),
+  model('grok-4.7', 'Grok 4.7', 'xai', 'high', 2, 6, 2, 'https://docs.x.ai/developers/models'),
+  model(
+    'grok-4.7-reasoning',
+    'Grok 4.7 Reasoning',
+    'xai',
+    'reasoning',
+    3,
+    15,
+    0.75,
+    'https://docs.x.ai/developers/models'
+  ),
+  model(
+    'meta/llama-3.3-70b-instruct',
+    'Llama 3.3 70B',
+    'nvidia',
+    'medium',
+    0,
+    0,
+    0,
+    'https://build.nvidia.com/meta/llama-3_3-70b-instruct',
+    0,
+    false
+  ),
+  model(
+    'nvidia/llama-3.1-nemotron-ultra-253b-v1',
+    'Nemotron Ultra 253B',
+    'nvidia',
+    'high',
+    0,
+    0,
+    0,
+    'https://build.nvidia.com/nvidia/llama-3_1-nemotron-ultra-253b-v1',
+    0,
+    false
+  ),
+  model(
+    'deepseek-ai/deepseek-r1',
+    'DeepSeek R1 (NVIDIA NIM)',
+    'nvidia',
+    'reasoning',
+    0,
+    0,
+    0,
+    'https://build.nvidia.com/deepseek-ai/deepseek-r1',
+    0,
+    false
+  ),
+  model(
+    'qwen/qwen2.5-coder-32b-instruct',
+    'Qwen 2.5 Coder 32B (NIM)',
+    'nvidia',
+    'medium',
+    0,
+    0,
+    0,
+    'https://build.nvidia.com/qwen/qwen2_5-coder-32b-instruct',
+    0,
+    false
+  ),
+  model(
+    'qwen2.5-0.5b-instruct',
+    'Qwen2.5 0.5B',
+    'local',
+    'low',
+    0,
+    0,
+    0,
+    'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF',
+    0,
+    false
+  ),
+  model(
+    'qwen2.5-coder-7b-instruct',
+    'Qwen2.5 Coder 7B (Local)',
+    'local',
+    'medium',
+    0,
+    0,
+    0,
+    'https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF',
+    0,
+    false
+  ),
+  model(
+    'llama-3.2-3b-instruct',
+    'Llama 3.2 3B (Local)',
+    'local',
+    'low',
+    0,
+    0,
+    0,
+    'https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct',
+    0,
+    false
+  ),
+  model(
+    'deepseek-r1-distill-qwen-14b',
+    'DeepSeek R1 Distill 14B (Local)',
+    'local',
+    'reasoning',
+    0,
+    0,
+    0,
+    'https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B',
+    0,
+    false
+  )
 ]
 
 export const defaults: Settings = {

@@ -16,6 +16,7 @@ import {
   type LeaderDecision,
   type SubagentAssignment
 } from '../shared/brain'
+import { detectKavakScenario, evaluateKavakResponse } from '../shared/kavak'
 import { recordCycleReflection, retrieveMandatoryContext } from './brain'
 
 const controllers = new Map<string, AbortController>()
@@ -728,6 +729,10 @@ async function execute(run: Run, controller: AbortController) {
         `${reviewer.name} evalúa corrección, cobertura, restricciones, autochequeo y decisión de escalado.`,
         run.id
       )
+      const kavakScenario = detectKavakScenario(run.prompt)
+      const kavakStats = kavakScenario
+        ? evaluateKavakResponse(kavakScenario.id, text)
+        : undefined
       const response = await request(
         run,
         reviewer,
@@ -736,27 +741,43 @@ async function execute(run: Run, controller: AbortController) {
             role: 'system',
             content: reviewerInstruction
           },
-          { role: 'user', content: JSON.stringify({ task: run.prompt, candidate: text }) }
+          {
+            role: 'user',
+            content: JSON.stringify({
+              task: run.prompt,
+              candidate: text,
+              ...(kavakStats ? { statisticalDatabaseCheck: kavakStats } : {})
+            })
+          }
         ],
         signal,
         false,
         1536
       )
       const review = reviewSchema.parse(parseJson(response.text))
+      if (kavakStats) {
+        review.score = kavakStats.score
+        review.verdict = `RMSE=${kavakStats.rmse.toFixed(3)} · MAPE=${kavakStats.mape.toFixed(1)}% · F1=${kavakStats.f1.toFixed(2)} · ${review.verdict}`
+        review.improvements = `${kavakStats.statisticalFeedback} ${review.improvements}`.trim()
+      }
       const accepted = review.score > bestScore
       if (accepted) {
         best = text
         bestScore = review.score
         run.result = best
       }
-      const selfCheck =
-        review.selfCheck ||
-        (review.score >= run.target
-          ? 'Autochequeo validado sin discrepancias críticas.'
-          : 'Autochequeo detectó oportunidades de corrección en el borrador.')
-      const mistake =
-        review.mistake ||
-        (review.score >= run.target ? 'Sin error crítico en este ciclo.' : review.verdict)
+      const selfCheck = kavakStats
+        ? `Verificación estadística BD Kavak (${kavakStats.orderId}/${kavakStats.stockId}): RMSE=${kavakStats.rmse.toFixed(3)}, MAPE=${kavakStats.mape.toFixed(1)}%, F1=${kavakStats.f1.toFixed(2)}, cobertura=${kavakStats.factCoverage}%.`
+        : review.selfCheck ||
+          (review.score >= run.target
+            ? 'Autochequeo validado sin discrepancias críticas.'
+            : 'Autochequeo detectó oportunidades de corrección en el borrador.')
+      const mistake = kavakStats
+        ? kavakStats.rmse > 0 || kavakStats.violatedClaims.length > 0
+          ? `Residual estadístico RMSE=${kavakStats.rmse.toFixed(3)} (MAPE=${kavakStats.mape.toFixed(1)}%): faltaron [${kavakStats.missingFacts.join(', ') || 'ninguno'}]${kavakStats.violatedClaims.length ? `, contradicción [${kavakStats.violatedClaims.join(', ')}]` : ''}.`
+          : 'Sin residual estadístico (RMSE=0.000, MAPE=0.0%, F1=1.00).'
+        : review.mistake ||
+          (review.score >= run.target ? 'Sin error crítico en este ciclo.' : review.verdict)
       const leaderDecision: LeaderDecision =
         review.leaderAction ||
         (review.score >= run.target
@@ -987,18 +1008,34 @@ async function executeTeam(run: Run, signal: AbortSignal) {
             `Revisor toma ${task.id}. Su puntuación es una evaluación de modelo.`,
             reviewer.id
           )
+          const kavakScenario = detectKavakScenario(run.prompt)
+          const kavakStats = kavakScenario
+            ? evaluateKavakResponse(kavakScenario.id, text)
+            : undefined
           const response = await request(
             run,
             reviewer,
             [
               { role: 'system', content: reviewerInstruction },
-              { role: 'user', content: JSON.stringify({ task: run.prompt, candidate: text }) }
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  task: run.prompt,
+                  candidate: text,
+                  ...(kavakStats ? { statisticalDatabaseCheck: kavakStats } : {})
+                })
+              }
             ],
             signal,
             false,
             1536
           )
           const review = reviewSchema.parse(parseJson(response.text))
+          if (kavakStats) {
+            review.score = kavakStats.score
+            review.verdict = `RMSE=${kavakStats.rmse.toFixed(3)} · MAPE=${kavakStats.mape.toFixed(1)}% · F1=${kavakStats.f1.toFixed(2)} · ${review.verdict}`
+            review.improvements = `${kavakStats.statisticalFeedback} ${review.improvements}`.trim()
+          }
           task.output = JSON.stringify(review)
           const accepted = review.score > bestScore
           if (accepted) {
@@ -1006,14 +1043,18 @@ async function executeTeam(run: Run, signal: AbortSignal) {
             bestScore = review.score
             run.result = best
           }
-          const selfCheck =
-            review.selfCheck ||
-            (review.score >= run.target
-              ? 'Autochequeo validado sin discrepancias críticas.'
-              : 'Autochequeo detectó oportunidades de corrección en el borrador.')
-          const mistake =
-            review.mistake ||
-            (review.score >= run.target ? 'Sin error crítico en este ciclo.' : review.verdict)
+          const selfCheck = kavakStats
+            ? `Verificación estadística BD Kavak (${kavakStats.orderId}/${kavakStats.stockId}): RMSE=${kavakStats.rmse.toFixed(3)}, MAPE=${kavakStats.mape.toFixed(1)}%, F1=${kavakStats.f1.toFixed(2)}, cobertura=${kavakStats.factCoverage}%.`
+            : review.selfCheck ||
+              (review.score >= run.target
+                ? 'Autochequeo validado sin discrepancias críticas.'
+                : 'Autochequeo detectó oportunidades de corrección en el borrador.')
+          const mistake = kavakStats
+            ? kavakStats.rmse > 0 || kavakStats.violatedClaims.length > 0
+              ? `Residual estadístico RMSE=${kavakStats.rmse.toFixed(3)} (MAPE=${kavakStats.mape.toFixed(1)}%): faltaron [${kavakStats.missingFacts.join(', ') || 'ninguno'}]${kavakStats.violatedClaims.length ? `, contradicción [${kavakStats.violatedClaims.join(', ')}]` : ''}.`
+              : 'Sin residual estadístico (RMSE=0.000, MAPE=0.0%, F1=1.00).'
+            : review.mistake ||
+              (review.score >= run.target ? 'Sin error crítico en este ciclo.' : review.verdict)
           const leaderDecision: LeaderDecision =
             review.leaderAction ||
             (review.score >= run.target

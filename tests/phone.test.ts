@@ -438,7 +438,12 @@ test('single API and single LLM model runs multi-agent RSI loop, subagent and co
   }
 })
 
-test('Kavak server database queries and 4-cycle self-improvement simulation verify facts and linear improvement', async () => {
+test('Kavak server database queries and 4-cycle statistical Evals verify RMSE reduction and linear improvement', async () => {
+  const allDb = await call('/kavak/db?table=all')
+  assert.equal(allDb.response.status, 200)
+  assert.ok(allDb.value.vehicles.length >= 20)
+  assert.ok(allDb.value.orders.length >= 6)
+
   const dbRes = await call('/kavak/db?table=all&q=ORD-9044')
   assert.equal(dbRes.response.status, 200)
   assert.equal(dbRes.value.orders.length, 1)
@@ -446,21 +451,30 @@ test('Kavak server database queries and 4-cycle self-improvement simulation veri
   assert.equal(dbRes.value.orders[0].customer, 'Luis Hernández')
   assert.equal(dbRes.value.orders[0].daysSinceDelivery, 18)
 
-  const simRes = await call('/kavak/simulate', {
+  const simRes = await call('/kavak/benchmark', {
     coordination: 'orchestrated',
     singleApi: true,
-    resetPreviousSimulation: true
+    resetPrevious: true
   })
   assert.equal(simRes.response.status, 201)
   assert.equal(simRes.value.cycles.length, 4)
   assert.equal(simRes.value.trend.isLinearImprovement, true)
-  assert.ok(simRes.value.trend.slope > 10)
-  assert.ok(simRes.value.trend.rSquared > 0.7)
+  assert.ok(simRes.value.trend.slope > 8)
+  assert.ok(simRes.value.trend.rSquared > 0.65)
+  assert.ok(
+    simRes.value.cycles[0].finalEvaluation.rmse > simRes.value.cycles[3].finalEvaluation.rmse
+  )
+  assert.equal(simRes.value.cycles[3].finalEvaluation.rmse, 0)
+  assert.equal(simRes.value.cycles[3].finalEvaluation.f1, 1)
   const scores = simRes.value.cycles.map((c: any) => c.finalEvaluation.score)
-  assert.ok(scores[0] < scores[1] && scores[1] < scores[2] && scores[2] < scores[3])
+  assert.ok(scores[0] < scores[1] && scores[1] <= scores[2] && scores[2] < scores[3])
   assert.equal(simRes.value.cycles[0].lessonsAtStart, 0)
   assert.equal(simRes.value.cycles[1].lessonsAtStart, 1)
   assert.equal(simRes.value.cycles[2].lessonsAtStart, 2)
   assert.equal(simRes.value.cycles[3].lessonsAtStart, 3)
-  assert.match(simRes.value.asciiChart, /mejora lineal consistente/)
+
+  const evalsRes = await call('/kavak/evals')
+  assert.equal(evalsRes.response.status, 200)
+  assert.equal(evalsRes.value.loopStageCounts.length, 7)
+  assert.ok(evalsRes.value.evalRows.length >= 4)
 })

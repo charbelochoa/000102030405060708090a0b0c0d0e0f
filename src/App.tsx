@@ -41,6 +41,7 @@ import { Configuration, Models, Skills } from './Configuration'
 import { Agents, Files, TerminalView } from './WorkspaceViews'
 import { Lab } from './Lab'
 import { Phone } from './Phone'
+import { EvalsView } from './Evals'
 import { PixelStudio } from './Factory'
 import { Evolution } from './Evolution'
 import { ContextBrain } from './ContextBrain'
@@ -55,6 +56,7 @@ const navigation = [
   { id: 'missions', label: 'Misiones', icon: Layers3 },
   { id: 'agents', label: 'Agentes', icon: Users },
   { id: 'metrics', label: 'Métricas y progreso', icon: Activity },
+  { id: 'evals', label: 'Evals y Loop RSI', icon: Activity },
   { id: 'evolution', label: 'Evolución del sistema', icon: GitBranch },
   { id: 'factory', label: 'Estudio de agentes', icon: FactoryIcon },
   { id: 'phone', label: 'Teléfono de clientes', icon: Smartphone },
@@ -213,7 +215,7 @@ export function App() {
             </button>
             <nav aria-label="Navegación principal">
               <div className="nav-section-label">ESPACIO DE TRABAJO</div>
-              {navigation.slice(0, 6).map((item) => (
+              {navigation.slice(0, 7).map((item) => (
                 <button
                   key={item.id}
                   className={`nav-item ${view === item.id ? 'active' : ''}`}
@@ -227,7 +229,7 @@ export function App() {
                 </button>
               ))}
               <div className="nav-section-label second">HERRAMIENTAS</div>
-              {navigation.slice(6, -1).map((item) => (
+              {navigation.slice(7, -1).map((item) => (
                 <button
                   key={item.id}
                   className={`nav-item ${view === item.id ? 'active' : ''}`}
@@ -353,6 +355,7 @@ export function App() {
             <div className="app-content">
               {view === 'lab' && <Lab />}
               {view === 'phone' && <Phone />}
+              {view === 'evals' && <EvalsView />}
               {view === 'overview' && (
                 <Dashboard
                   onNew={() => setNewMission(true)}

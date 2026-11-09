@@ -20,6 +20,7 @@ import {
   kavakVehicles
 } from '../shared/kavak'
 import { ImprovementChart } from './Charts'
+import { EvalsView } from './Evals'
 
 export function Phone() {
   const { snapshot, notify } = useWorkspace()
@@ -38,7 +39,7 @@ export function Phone() {
   const [score, setScore] = useState(5)
   const [note, setNote] = useState('')
   const [simulating, setSimulating] = useState(false)
-  const [kavakTab, setKavakTab] = useState<'scenarios' | 'orders' | 'vehicles' | 'policies'>('scenarios')
+  const [kavakTab, setKavakTab] = useState<'evals' | 'scenarios' | 'orders' | 'vehicles' | 'policies'>('evals')
   const [simSummary, setSimSummary] = useState<string>('')
   const screen = useRef<HTMLDivElement>(null)
   const cliBottom = useRef<HTMLDivElement>(null)
@@ -432,12 +433,12 @@ export function Phone() {
             </div>
           </section>
 
-          <section className="panel phone-card" aria-label="Base de datos Kavak y simulación RSI">
+          <section className="panel phone-card" aria-label="Base de datos Kavak y Evals RSI">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <h3>Base de datos Kavak en servidor y prueba de automejora</h3>
+                <h3>Base de datos Kavak en servidor, Loop RSI y Evals Estadísticas</h3>
                 <p className="phone-note" style={{ marginTop: 4 }}>
-                  Base de datos determinista en el servidor ({kavakVehicles.length} unidades, {kavakOrders.length} pedidos, {kavakPolicies.length} políticas) accesible con la herramienta <code className="mono">query_kavak_db</code>.
+                  Base de datos exacta en el servidor ({kavakVehicles.length} modelos de autos, {kavakOrders.length} pedidos, {kavakPolicies.length} políticas) con cálculo estadístico de error (RMSE, MAPE, σ y F1) y herramienta <code className="mono">query_kavak_db</code>.
                 </p>
               </div>
               <button
@@ -446,21 +447,28 @@ export function Phone() {
                 onClick={runKavakSuite}
                 disabled={simulating}
               >
-                {simulating ? 'Ejecutando 4 ciclos…' : 'Ejecutar simulación RSI Kavak (4 ciclos)'}
+                {simulating ? 'Evaluando 4 ciclos…' : 'Correr Evals BD Kavak (4 ciclos)'}
               </button>
             </div>
             {simSummary && (
               <p className="phone-note" style={{ marginTop: 8 }}>
-                <strong>Resultado medido en simulación BD Kavak:</strong> {simSummary}
+                <strong>Tendencia estadística medida en Evals Kavak:</strong> {simSummary}
               </p>
             )}
             <div className="phone-choice" style={{ marginTop: 10 }}>
               <button
                 type="button"
+                className={kavakTab === 'evals' ? 'active' : ''}
+                onClick={() => setKavakTab('evals')}
+              >
+                Gráfica Loop y Evals
+              </button>
+              <button
+                type="button"
                 className={kavakTab === 'scenarios' ? 'active' : ''}
                 onClick={() => setKavakTab('scenarios')}
               >
-                Casos de prueba ({kavakScenarios.length})
+                Casos Eval ({kavakScenarios.length})
               </button>
               <button
                 type="button"
@@ -474,7 +482,7 @@ export function Phone() {
                 className={kavakTab === 'vehicles' ? 'active' : ''}
                 onClick={() => setKavakTab('vehicles')}
               >
-                Inventario BD ({kavakVehicles.length})
+                Modelos Kavak ({kavakVehicles.length})
               </button>
               <button
                 type="button"
@@ -484,6 +492,11 @@ export function Phone() {
                 Políticas ({kavakPolicies.length})
               </button>
             </div>
+            {kavakTab === 'evals' && (
+              <div style={{ marginTop: 12 }}>
+                <EvalsView embedded />
+              </div>
+            )}
             {kavakTab === 'scenarios' && (
               <table className="phone-table" style={{ marginTop: 10 }}>
                 <thead>

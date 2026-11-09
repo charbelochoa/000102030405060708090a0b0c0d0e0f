@@ -7,6 +7,7 @@ import { SectionTitle, Status, ProviderMark } from './components'
 import { ImprovementChart, TokenChart } from './Charts'
 import { StudioPreview } from './Factory'
 import { MemoryEfficiency } from './Evolution'
+import { EvalsView } from './Evals'
 
 export function Dashboard({
   onNew,
@@ -53,7 +54,10 @@ export function Dashboard({
             Vista general
           </button>
           <button className={metrics ? 'active' : ''} onClick={() => navigate('metrics')}>
-            Rendimiento
+            Rendimiento y Evals
+          </button>
+          <button onClick={() => navigate('evals')}>
+            Evals y Loop RSI
           </button>
         </div>
         <select aria-label="Periodo" value={period} onChange={(e) => setPeriod(e.target.value)}>
@@ -118,6 +122,7 @@ export function Dashboard({
           {!runs.length && <p className="empty-measurement">Sin misiones en este periodo.</p>}
         </section>
       </div>
+      {metrics && <EvalsView embedded />}
       {metrics && <MemoryEfficiency />}
       <section className="panel lab-panel">
         <header>

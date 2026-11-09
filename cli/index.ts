@@ -471,28 +471,69 @@ program
   .description('Páginas del cerebro de contexto')
   .action(async () => print(await request('/context')))
 program
+  .command('evals')
+  .description('Mostrar diagrama del Loop RSI, qué se está resolviendo y tabla de Evals con RMSE, MAPE y F1')
+  .option('--run-kavak', 'Ejecutar antes la batería de 4 ciclos de Evals sobre la BD Kavak')
+  .option('--coordination <mode>', 'orchestrated o autonomous', 'orchestrated')
+  .action(async (options) => {
+    if (options.runKavak) {
+      await request('/kavak/benchmark', {
+        coordination: options.coordination,
+        reviewer: 'same',
+        maxIterations: 2,
+        resetPrevious: true
+      })
+    }
+    const rep = await request<any>('/kavak/evals')
+    print(chalk.green(banner))
+    print(chalk.bold('\nCIRCUITO CERRADO DEL LOOP RSI (7 ETAPAS):'))
+    print(
+      chalk.cyan(
+        '  [01 Contexto] -> [02 1a Pasada] -> [03 Router] -> [04 Orquestador] -> [05 BD Kavak] -> [06 Eval Estadística] -> [07 Memoria RSI] --(lección t+1)--> [01]'
+      )
+    )
+    for (const st of rep.loopStageCounts || []) {
+      print(
+        `  [${st.id}] ${st.name.padEnd(26)} (${String(st.count).padStart(2)}x) · ${st.whatWeDo} [${st.detail}]`
+      )
+    }
+    if (rep.points?.length) {
+      print(chalk.cyan('\n' + renderAsciiPerformanceChart(rep.points, 7, 7)))
+    }
+    if (rep.evalRows?.length) {
+      print(chalk.yellow('\nTABLA DE EVALS Y ERROR ESTADÍSTICO (RMSE / MAPE / σ / F1):'))
+      for (const r of rep.evalRows) {
+        const kv = r.kavakEval
+        print(
+          `  [C${r.cycleOrder}] ${r.title} · ${r.model} (${r.tier}) -> Decisión: ${r.leaderDecision}\n    Score=${r.score}/100${kv ? ` · RMSE=${kv.rmse.toFixed(3)} · MAPE=${kv.mape.toFixed(1)}% · σ=${kv.stdError.toFixed(3)} · P=${kv.precision.toFixed(2)} · R=${kv.recall.toFixed(2)} · F1=${kv.f1.toFixed(2)}` : ''}`
+        )
+      }
+    }
+  })
+program
   .command('kavak')
-  .description('Consultar la base de datos Kavak del servidor o ejecutar la simulación RSI de 4 ciclos')
+  .description('Consultar la base de datos Kavak del servidor o ejecutar las Evals estadísticas de 4 ciclos')
   .option('--table <tableName>', 'all, vehicles, orders o policies', 'all')
   .option('--query <text>', 'Texto o folio a buscar (ej. ORD-9044, KVK-1042, Santa Fe)', '')
-  .option('--simulate', 'Ejecutar la batería de 4 ciclos de automejora sobre la BD Kavak')
+  .option('--simulate', 'Ejecutar la batería de 4 ciclos de Evals sobre la BD Kavak')
   .option('--coordination <mode>', 'orchestrated o autonomous', 'orchestrated')
   .action(async (options) => {
     if (options.simulate) {
-      const res = await request<any>('/kavak/simulate', {
+      const res = await request<any>('/kavak/benchmark', {
         coordination: options.coordination,
         singleApi: true,
-        resetPreviousSimulation: true
+        resetPrevious: true
       })
       print(chalk.green(banner))
-      print(chalk.bold(`\nSimulación de automejora Kavak (${res.coordination} · 1 sola API: ${res.singleApi})`))
+      print(chalk.bold(`\nEvals Estadísticas Kavak (${res.coordination} · modo: ${res.executionMode})`))
       print(chalk.gray(res.note))
       print(chalk.cyan('\n' + res.progressBar))
       print(chalk.cyan('\n' + res.asciiChart))
-      print(chalk.yellow('\nDetalle por ciclo y verificación contra BD Kavak:'))
+      print(chalk.yellow('\nDetalle estadístico por ciclo (RMSE, MAPE, Desv.Est y F1 contra BD Kavak):'))
       for (const c of res.cycles) {
+        const fe = c.finalEvaluation
         print(
-          `  [Ciclo ${c.cycle}] ${c.orderId} (${c.stockId}) · ${c.model} (${c.tier}) · lecciones previas=${c.lessonsAtStart} · registros BD=${c.dbRecordsMatched}\n    Inicial: ${c.initialEvaluation.score}/100 (cobertura ${c.initialEvaluation.factCoverage}%) -> Final: ${c.finalEvaluation.score}/100 · Decisión líder: ${c.leaderDecision}`
+          `  [Ciclo ${c.cycle}] ${c.orderId} (${c.stockId}) · ${c.model} (${c.tier}) · lecciones=${c.lessonsAtStart}\n    Score=${fe.score}/100 · RMSE=${fe.rmse.toFixed(3)} · MAPE=${fe.mape.toFixed(1)}% · σ=${fe.stdError.toFixed(3)} · F1=${fe.f1.toFixed(2)} · Decisión líder=${c.leaderDecision}`
         )
       }
       return

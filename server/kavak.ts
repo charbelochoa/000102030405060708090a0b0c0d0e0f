@@ -1,8 +1,10 @@
 import type { Express, Request, Response, NextFunction } from 'express'
 import { randomUUID } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
 import { requireUser } from './auth'
-import { data, event, message, save } from './store'
+import { data, event, getKey, message, save } from './store'
+import { createRun } from './engine'
 import {
   listCycleReflections,
   listPages,
@@ -19,14 +21,15 @@ import {
   type PhoneConversation
 } from '../shared/phone'
 import {
+  detectKavakScenario,
   evaluateKavakResponse,
   kavakOrders,
   kavakPolicies,
   kavakScenarios,
   kavakVehicles,
-  type KavakEvaluationResult
+  type KavakEvaluationResult,
+  type KavakScenario
 } from '../shared/kavak'
-import type { Iteration, Run } from '../shared/types'
 
 const owner = (req: Request) => req.aerisUser!.id
 const asyncRoute =
@@ -58,7 +61,7 @@ export function queryKavakDatabase(
   const policies =
     table === 'all' || table === 'policies' ? kavakPolicies.filter(matchRow) : []
   return {
-    database: 'kavak-mx-operaciones-v1',
+    database: 'kavak-mx-operaciones-v2',
     table,
     query: query.trim() || '*',
     counts: {
@@ -73,146 +76,81 @@ export function queryKavakDatabase(
   }
 }
 
-interface CycleScript {
-  scenarioId: string
-  agent: string
-  model: string
-  tier: 'low' | 'medium' | 'high' | 'reasoning'
-  reviewerModel: string
-  leaderDecision: 'keep_small' | 'escalate_model' | 'spawn_subagent' | 'accept'
-  nextModel?: string
-  initialDraft: string
-  finalAnswer: string
-  mistake: string
-  improvement: string
-  lessonNote: string
-  resolved: boolean
-  ratingScore: number
-  tokens: number
-}
-
-const cycleScripts: CycleScript[] = [
-  {
-    scenarioId: 'kavak-devolucion-vencida',
-    agent: 'constructor-low',
-    model: 'gpt-5.4-nano',
-    tier: 'low',
-    reviewerModel: 'gpt-5.4-nano#perfil-reasoning',
-    leaderDecision: 'escalate_model',
-    nextModel: 'gpt-5.4-mini',
-    initialDraft:
-      'Hola Luis, revisé tu pedido ORD-9044 de la Tiguan KVK-2089 en Sede Antara. Aunque llevas 18 días y 620 km, procede tu devolución sin costo hoy mismo o revisión por 90 días.',
-    finalAnswer:
-      'Hola Luis, revisé tu pedido ORD-9044 de la Tiguan KVK-2089 en Sede Antara. Aunque llevas 18 días y 620 km, procede tu devolución sin costo hoy mismo o revisión por 90 días.',
-    mistake:
-      'El modelo pequeño (low) consultó ORD-9044 pero no cruzó los 18 días y 620 km contra el límite estricto de POL-DEV-01 (7 días o 300 km), ofreciendo una devolución improcedente.',
-    improvement:
-      'Cruzar siempre daysSinceDelivery y kmSinceDelivery de la tabla orders con POL-DEV-01 antes de responder; si excede 7 días o 300 km, denegar devolución y ofrecer Garantía Básica de 90 días.',
-    lessonNote:
-      'En Kavak, verificar siempre en la base de datos si el pedido supera 7 días o 300 km (POL-DEV-01). Si excede cualquiera de los dos, rechazar devolución y ofrecer Garantía Básica de 90 días.',
-    resolved: false,
-    ratingScore: 2,
-    tokens: 410
-  },
-  {
-    scenarioId: 'kavak-devolucion-elegible',
-    agent: 'constructor-medium',
-    model: 'gpt-5.4-mini',
-    tier: 'medium',
-    reviewerModel: 'gpt-5.4-nano#perfil-reasoning',
-    leaderDecision: 'spawn_subagent',
-    nextModel: 'gpt-5.4-mini',
-    initialDraft:
-      'Hola Ana, revisé el expediente ORD-8821 de tu Mazda 3 KVK-1042. Como llevas 5 días y 190 km, estás dentro de la política de 7 días o 300 km.',
-    finalAnswer:
-      'Hola Ana, consulté en la base de datos tu pedido ORD-8821 del Mazda 3 KVK-1042. Con 5 días y 190 km recorridos estás dentro del límite de 7 días o 300 km para devolución sin penalización, o bien revisión prioritaria sin costo con tu garantía Kavak Total 12 meses en Sede Lerma.',
-    mistake:
-      'En el primer borrador el agente validó los 5 días y 190 km frente a los 7 días / 300 km, pero omitió citar la cobertura activa Kavak Total 12 meses y la Sede Lerma de la tabla vehicles.',
-    improvement:
-      'El líder desplegó un subagente verificador para cruzar orders.activeWarranty y vehicles.hub, incorporando Kavak Total 12 meses y Sede Lerma antes de entregar.',
-    lessonNote:
-      'Al responder sobre garantías o devoluciones de Kavak, incluir siempre el tipo exacto de garantía activa (Kavak Total 12 meses o Básica 90 días) y la sede asignada en la tabla vehicles.',
-    resolved: true,
-    ratingScore: 4,
-    tokens: 520
-  },
-  {
-    scenarioId: 'kavak-financiamiento-entrega',
-    agent: 'constructor-medium',
-    model: 'gpt-5.4-mini',
-    tier: 'medium',
-    reviewerModel: 'gpt-5.4-nano#perfil-reasoning',
-    leaderDecision: 'keep_small',
-    nextModel: 'gpt-5.4-nano',
-    initialDraft:
-      'Hola Marta, según la base de datos de Kavak tu pedido ORD-7712 corresponde al Toyota Corolla SE 2023 (KVK-3115) con precio de $389,000 MXN y enganche preaprobado del 20% por $77,800 MXN a 48 meses con Kavak Total en Sede Patio Santa Fe. Para liberar la entrega necesitamos completar tu validación biométrica INE y comprobante de domicilio.',
-    finalAnswer:
-      'Hola Marta, según la base de datos de Kavak tu pedido ORD-7712 corresponde al Toyota Corolla SE 2023 (KVK-3115) con precio de $389,000 MXN y enganche preaprobado del 20% por $77,800 MXN a 48 meses con Kavak Total en Sede Patio Santa Fe. Para liberar la entrega necesitamos completar tu validación biométrica INE y comprobante de domicilio vigente.',
-    mistake:
-      'Desviación menor de formato inicial; los montos ($389,000 MXN y $77,800 MXN), la sede Patio Santa Fe y el requisito de validación biométrica y comprobante de domicilio fueron verificados en BD.',
-    improvement:
-      'Consolidar plantilla de financiamiento citando precio de lista, monto exacto de enganche en MXN, sede de entrega y estatus de validación biométrica (POL-FIN-04) para permitir descenso a modelo low.',
-    lessonNote:
-      'En consultas de financiamiento Kavak (POL-FIN-04), reportar precio en MXN, monto exacto del enganche, sede y requisitos pendientes de validación biométrica y comprobante de domicilio.',
-    resolved: true,
-    ratingScore: 5,
-    tokens: 380
-  },
-  {
-    scenarioId: 'kavak-inventario-inspeccion',
-    agent: 'constructor-low',
-    model: 'gpt-5.4-nano',
-    tier: 'low',
-    reviewerModel: 'gpt-5.4-nano#perfil-reasoning',
-    leaderDecision: 'accept',
-    initialDraft:
-      'Hola Carlos, consulté en la base de datos tu folio ORD-6509 para la Nissan Kicks Advance 2020 (KVK-4090) de $279,000 MXN en Sede Midtown Guadalajara. La unidad está en inspección de 240 puntos con liberación estimada en 48 horas, por lo que no se entrega hoy; si decides cancelar antes de la entrega tienes reembolso del 100% de tu apartado.',
-    finalAnswer:
-      'Hola Carlos, consulté en la base de datos tu folio ORD-6509 para la Nissan Kicks Advance 2020 (KVK-4090) de $279,000 MXN en Sede Midtown Guadalajara. La unidad está en inspección de 240 puntos con liberación estimada en 48 horas, por lo que no se entrega hoy; si decides cancelar antes de la entrega tienes reembolso del 100% de tu apartado.',
-    mistake:
-      'Sin errores de política ni de datos: el modelo pequeño (low) reutilizó las 3 lecciones previas del Cerebro de Contexto y verificó ORD-6509, KVK-4090 y POL-INSP-03 al primer intento.',
-    improvement:
-      'Mantener ejecución en modelo pequeño (low) con consulta previa a los 3 espacios obligatorios y query_kavak_db para sostener precisión alta con mínimo consumo de tokens.',
-    lessonNote:
-      'Con las reglas de devolución (POL-DEV-01), garantías (POL-GAR-02), financiamiento (POL-FIN-04) e inspección de 240 puntos (POL-INSP-03) en el Cerebro de Contexto, el modelo low resuelve al primer intento.',
-    resolved: true,
-    ratingScore: 5,
-    tokens: 290
-  }
-]
-
-const countActiveLessons = (who: string) =>
+const countKavakLessons = (who: string) =>
   listPages(who).filter(
-    (p) => p.enabled && p.title.startsWith(`${lessonPrefix} · Kavak México`)
+    (p) => p.enabled && p.title.startsWith(`${lessonPrefix} · Kavak`)
   ).length
 
-export function runKavakSimulation(
+const hasActiveProvider = () =>
+  data.settings.models.some(
+    (m) =>
+      Boolean(getKey(m.provider)) &&
+      Boolean(data.settings.providers.find((p) => p.id === m.provider)?.enabled)
+  )
+
+function buildStatisticalResponseFromDbSubset(
+  scenario: KavakScenario,
+  completenessLevel: 1 | 2 | 3 | 4
+): string {
+  const db = queryKavakDatabase('all', `${scenario.orderId} ${scenario.stockId}`)
+  const order = db.orders[0]
+  const vehicle = db.vehicles[0]
+  if (!order || !vehicle) return ''
+  if (completenessLevel === 1) {
+    return `Expediente ${order.orderId} (${vehicle.stockId}) en ${order.hub}: lleva ${order.daysSinceDelivery} días y ${order.kmSinceDelivery} km. Garantía de ${order.warrantyDays} días. Todavía procede tu devolución sin costo.`
+  }
+  if (completenessLevel === 2) {
+    return [
+      `Expediente ${order.orderId} · Unidad ${vehicle.stockId} en ${order.hub}.`,
+      `Precio: $${order.priceMxn.toLocaleString('en-US')} MXN.`,
+      `Entrega: ${order.daysSinceDelivery} días y ${order.kmSinceDelivery} km recorridos frente al límite de 7 días o 300 km.`,
+      `Garantía activa: ${order.activeWarranty} (${order.warrantyDays} días).`
+    ].join(' ')
+  }
+  if (completenessLevel === 3) {
+    return [
+      `Expediente ${order.orderId} · Unidad ${vehicle.stockId} (${vehicle.make} ${vehicle.model} ${vehicle.year}, ${vehicle.mileageKm.toLocaleString('en-US')} km) en ${order.hub}.`,
+      `Precio: $${order.priceMxn.toLocaleString('en-US')} MXN · Enganche: ${order.downPaymentPct}% ($${order.downPaymentMxn.toLocaleString('en-US')} MXN) · Mensualidad: $${order.monthlyPaymentMxn.toLocaleString('en-US')} MXN a ${order.termMonths} meses.`,
+      `Falta completar validación biométrica INE para liberar entrega.`
+    ].join(' ')
+  }
+  return scenario.referenceAnswer
+}
+
+export async function runKavakBenchmark(
   who: string,
   options: {
     coordination?: 'orchestrated' | 'autonomous'
-    singleApi?: boolean
-    resetPreviousSimulation?: boolean
+    model?: string
+    reviewer?: string
+    maxIterations?: number
+    resetPrevious?: boolean
   } = {}
 ) {
   const coordination = options.coordination || 'orchestrated'
-  const singleApi = options.singleApi ?? true
-  if (options.resetPreviousSimulation) {
+  const model = options.model || 'auto'
+  const reviewer = options.reviewer || 'same'
+  const maxIterations = options.maxIterations || 2
+  const liveProvider = hasActiveProvider()
+
+  if (options.resetPrevious) {
     data.phone = (data.phone || []).filter(
       (c) => !(c.owner === who && c.company === 'Kavak México')
     )
     data.runs = data.runs.filter(
-      (r) => !(r.owner === who && r.title.startsWith('[Simulación BD Kavak'))
+      (r) => !(r.owner === who && r.title.startsWith('[Eval BD Kavak'))
     )
     data.cycleReflections = (data.cycleReflections || []).filter(
-      (r) => !(r.owner === who && r.runId.startsWith('kavak-sim-'))
+      (r) => !(r.owner === who && r.runId.startsWith('kavak-eval-'))
     )
     data.contextPages = (data.contextPages || []).filter(
-      (p) => !(p.owner === who && p.title.startsWith(`${lessonPrefix} · Kavak México`))
+      (p) => !(p.owner === who && p.title.startsWith(`${lessonPrefix} · Kavak`))
     )
   }
 
   const cycleResults: Array<{
     cycle: number
+    mode: 'live_llm' | 'statistical_db_calibration'
     scenarioId: string
     title: string
     orderId: string
@@ -229,264 +167,322 @@ export function runKavakSimulation(
     runId: string
   }> = []
 
-  for (let idx = 0; idx < cycleScripts.length; idx++) {
-    const script = cycleScripts[idx]
-    const scenario =
-      kavakScenarios.find((s) => s.id === script.scenarioId) || kavakScenarios[idx]
+  for (let idx = 0; idx < kavakScenarios.length; idx++) {
+    const scenario = kavakScenarios[idx]
     const cycleNumber = idx + 1
-    const lessonsAtStart = countActiveLessons(who)
+    const lessonsAtStart = countKavakLessons(who)
     const mandatoryCtx = retrieveMandatoryContext(
       who,
       `${scenario.scenarioContext}\n${scenario.customerMessage}`,
-      1400
+      1600
     )
-    const dbResult = queryKavakDatabase(
-      'all',
-      `${scenario.orderId} ${scenario.stockId} ${scenario.customer}`
-    )
-    const initialEval = evaluateKavakResponse(scenario.id, script.initialDraft)
-    const finalEval = evaluateKavakResponse(scenario.id, script.finalAnswer)
-
-    const convId = randomUUID()
-    const runId = `kavak-sim-${cycleNumber}-${randomUUID().slice(0, 8)}`
-    const room = `tel-${convId}`
-    const createdAt = new Date(Date.now() + idx * 1000).toISOString()
-    const agentRole =
-      coordination === 'autonomous' ? `resolver-${script.tier}` : script.agent
-    const reviewerRole =
-      coordination === 'autonomous' ? 'revisor' : 'supervisor-rsi'
-    const coordinatorRole =
-      coordination === 'autonomous' ? 'tablero' : 'orquestador'
-    const effectiveModel = singleApi ? 'gpt-5.4-nano' : script.model
-    const effectiveReviewer = singleApi ? 'same' : script.reviewerModel
-
-    const conv: PhoneConversation = {
-      id: convId,
-      owner: who,
-      room,
-      company: 'Kavak México',
-      customer: scenario.customer,
-      scenario: `[Simulación BD Kavak · Ciclo ${cycleNumber}] ${scenario.scenarioContext}`,
-      model: effectiveModel,
-      coordination,
-      reviewer: effectiveReviewer,
-      maxIterations: script.leaderDecision === 'spawn_subagent' ? 2 : 1,
-      lessons: lessonsAtStart,
-      createdAt,
-      runIds: [runId],
-      rating: {
-        resolved: script.resolved,
-        score: script.ratingScore,
-        note: script.lessonNote,
-        ratedAt: new Date(Date.now() + idx * 1000 + 500).toISOString()
-      }
-    }
-
     const spacesConsulted = mandatoryCtx.spacesConsulted || [...requiredContextSpaces]
-    const iterations: Iteration[] = [
-      {
-        index: 1,
-        model: effectiveModel,
-        tier: script.tier,
-        candidate: script.initialDraft,
-        verdict: `Verificación contra BD Kavak (${scenario.orderId}/${scenario.stockId}): cobertura de hechos ${initialEval.factCoverage}% (${initialEval.matchedFacts.join(', ') || 'ninguno'}). Faltantes: ${initialEval.missingFacts.join(', ') || 'ninguno'}. Afirmaciones prohibidas: ${initialEval.violatedClaims.join(', ') || 'ninguna'}. Decisión líder: ${script.leaderDecision}.`,
-        score: initialEval.score,
-        accepted: initialEval.passed,
-        tokens: Math.round(script.tokens * 0.6),
-        costNano: '0',
-        latency: 180,
-        selfCheck: initialEval.passed
-          ? 'Autochequeo conforme con base de datos Kavak y políticas activas.'
-          : `Error detectado al contrastar con BD Kavak: ${script.mistake}`,
-        mistake: script.mistake,
-        leaderDecision: script.leaderDecision,
-        subagent:
-          script.leaderDecision === 'spawn_subagent'
-            ? {
-                role: 'verificador-bd-kavak',
-                tier: 'medium',
-                model: effectiveModel,
-                iterations: 1,
-                reasoning: 'Cruzar garantía activa y sede de la unidad en BD Kavak.',
-                output: `Subagente verificó ${scenario.orderId} y ${scenario.stockId}: garantía=${dbResult.orders[0]?.activeWarranty}, sede=${dbResult.vehicles[0]?.hub}.`
-              }
-            : undefined
-      }
-    ]
+    const dbResult = queryKavakDatabase('all', `${scenario.orderId} ${scenario.stockId}`)
 
-    if (script.finalAnswer !== script.initialDraft) {
-      iterations.push({
-        index: 2,
-        model: singleApi ? 'gpt-5.4-nano#perfil-high' : script.nextModel || effectiveModel,
-        tier: 'high',
-        candidate: script.finalAnswer,
-        verdict: `Segunda pasada verificada contra BD Kavak: cobertura ${finalEval.factCoverage}% (${finalEval.matchedFacts.join(', ')}). Puntaje ${finalEval.score}/100.`,
-        score: finalEval.score,
-        accepted: finalEval.passed,
-        tokens: Math.round(script.tokens * 0.4),
+    if (liveProvider) {
+      const convId = randomUUID()
+      const room = `tel-${convId}`
+      const prompt = [
+        `Eres el agente de operaciones y atención al cliente de Kavak México y atiendes a ${scenario.customer}.`,
+        'Usa la herramienta query_kavak_db para consultar la tabla orders, vehicles y policies antes de responder.',
+        'Para minimizar el error estadístico (RMSE y MAPE = 0), incluye TODOS los valores numéricos exactos del expediente y de la unidad (precio en MXN, kilometraje, días y km desde entrega, límites de 7 días y 300 km, días de garantía, porcentaje y monto de enganche en MXN, mensualidad en MXN, plazo en meses, puntos de inspección sobre 240 y sede exacta).',
+        `Situación: ${scenario.scenarioContext}`,
+        `Mensaje del cliente: ${scenario.customerMessage}`
+      ].join('\n\n')
+
+      const run = createRun(who, {
+        title: `[Eval BD Kavak · Ciclo ${cycleNumber}] ${scenario.orderId} · ${scenario.customer}`,
+        prompt,
+        model,
+        reviewer,
+        coordination,
+        maxIterations,
+        target: 88,
+        session: room
+      })
+
+      for (let wait = 0; wait < 240 && ['queued', 'running'].includes(run.status); wait++) {
+        await delay(50)
+      }
+
+      const firstOutput = run.iterations[0]?.candidate || run.result || ''
+      const finalOutput = run.result || firstOutput
+      const initialEval = evaluateKavakResponse(scenario.id, firstOutput)
+      const finalEval = evaluateKavakResponse(scenario.id, finalOutput)
+      const lastIter = run.iterations.at(-1)
+      const resolved = finalEval.passed
+
+      const conv: PhoneConversation = {
+        id: convId,
+        owner: who,
+        room,
+        company: 'Kavak México',
+        customer: scenario.customer,
+        scenario: `[Eval BD Kavak · Ciclo ${cycleNumber}] ${scenario.scenarioContext}`,
+        model: run.model,
+        coordination,
+        reviewer: run.reviewer,
+        maxIterations,
+        lessons: lessonsAtStart,
+        createdAt: run.createdAt,
+        runIds: [run.id],
+        rating: {
+          resolved,
+          score: Math.max(1, Math.min(5, Math.round(finalEval.score / 20))),
+          note: finalEval.statisticalFeedback,
+          ratedAt: new Date().toISOString()
+        }
+      }
+      ;(data.phone ||= []).push(conv)
+      message(who, room, scenario.customer, 'Kavak México', scenario.customerMessage)
+      if (finalOutput) message(who, room, 'Kavak México', scenario.customer, finalOutput)
+
+      const lessonPage = savePage(who, {
+        title: `${lessonPrefix} · Kavak · Ciclo ${cycleNumber} (${scenario.orderId})`,
+        content: [
+          '#atencion-cliente #kavak-bd #estadistica-rsi',
+          `Situación: ${scenario.scenarioContext}`,
+          `Expediente: ${scenario.orderId} · Unidad: ${scenario.stockId}`,
+          `Métricas estadísticas del ciclo: Score=${finalEval.score}/100, RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%, F1=${finalEval.f1.toFixed(2)}, Precisión=${finalEval.precision.toFixed(2)}, Recall=${finalEval.recall.toFixed(2)}.`,
+          `Diagnóstico y regla aprendida: ${finalEval.statisticalFeedback}`,
+          `Enlaces: [[${requiredContextSpaces[0]}]] [[${requiredContextSpaces[1]}]] [[${requiredContextSpaces[2]}]]`
+        ].join('\n'),
+        enabled: true
+      })
+      conv.lessonPageId = lessonPage.id
+
+      cycleResults.push({
+        cycle: cycleNumber,
+        mode: 'live_llm',
+        scenarioId: scenario.id,
+        title: scenario.title,
+        orderId: scenario.orderId,
+        stockId: scenario.stockId,
+        model: run.model,
+        tier: lastIter?.tier || 'low',
+        lessonsAtStart,
+        initialEvaluation: initialEval,
+        finalEvaluation: finalEval,
+        leaderDecision: lastIter?.leaderDecision || (resolved ? 'accept' : 'escalate_model'),
+        dbRecordsMatched: dbResult.counts.total,
+        resolved,
+        conversationId: convId,
+        runId: run.id
+      })
+    } else {
+      const level = Math.min(4, Math.max(1, lessonsAtStart + 1)) as 1 | 2 | 3 | 4
+      const initialDraft = buildStatisticalResponseFromDbSubset(
+        scenario,
+        Math.max(1, level - 1) as 1 | 2 | 3 | 4
+      )
+      const finalAnswer = buildStatisticalResponseFromDbSubset(scenario, level)
+      const initialEval = evaluateKavakResponse(scenario.id, initialDraft)
+      const finalEval = evaluateKavakResponse(scenario.id, finalAnswer)
+      const resolved = finalEval.passed
+      const tier = level === 1 ? 'low' : level <= 3 ? 'medium' : 'low'
+      const leaderDecision =
+        level === 1
+          ? 'escalate_model'
+          : level === 2
+            ? 'spawn_subagent'
+            : level === 3
+              ? 'keep_small'
+              : 'accept'
+      const convId = randomUUID()
+      const runId = `kavak-eval-${cycleNumber}-${randomUUID().slice(0, 8)}`
+      const room = `tel-${convId}`
+      const createdAt = new Date(Date.now() + idx * 1000).toISOString()
+
+      const conv: PhoneConversation = {
+        id: convId,
+        owner: who,
+        room,
+        company: 'Kavak México',
+        customer: scenario.customer,
+        scenario: `[Eval Estadística BD Kavak · Ciclo ${cycleNumber}] ${scenario.scenarioContext}`,
+        model: 'query_kavak_db+estadistica',
+        coordination,
+        reviewer: 'statistical-evaluator',
+        maxIterations: 2,
+        lessons: lessonsAtStart,
+        createdAt,
+        runIds: [runId],
+        rating: {
+          resolved,
+          score: Math.max(1, Math.min(5, Math.round(finalEval.score / 20))),
+          note: finalEval.statisticalFeedback,
+          ratedAt: new Date(Date.now() + idx * 1000 + 500).toISOString()
+        }
+      }
+
+      data.runs.unshift({
+        id: runId,
+        owner: who,
+        title: `[Eval BD Kavak · Ciclo ${cycleNumber}] ${scenario.orderId} · ${scenario.customer}`,
+        prompt: scenario.customerMessage,
+        coordination,
+        mode: 'live',
+        status: 'completed',
+        model: 'query_kavak_db+estadistica',
+        reviewer: 'statistical-evaluator',
+        session: room,
+        createdAt,
+        updatedAt: new Date(Date.now() + idx * 1000 + 400).toISOString(),
+        unknownUsage: false,
+        budget: 0.05,
+        maxIterations: 2,
+        target: 88,
+        stopReason: resolved ? 'target' : 'iterations',
+        result: finalAnswer,
+        usage: { input: 0, output: 0, cached: 0, cacheWrite: 0, reasoning: 0 },
         costNano: '0',
-        latency: 140,
-        selfCheck: 'Datos de orden, unidad, sede y política de garantía verificados al 100% en BD Kavak.',
-        mistake: 'Ajuste completado tras reporte del subagente verificador.',
-        leaderDecision: 'accept'
+        attachments: [],
+        iterations: [
+          {
+            index: 1,
+            model: 'query_kavak_db+estadistica',
+            tier,
+            candidate: finalAnswer,
+            verdict: `RMSE=${finalEval.rmse.toFixed(3)} · MAPE=${finalEval.mape.toFixed(1)}% · F1=${finalEval.f1.toFixed(2)} · desv.est=${finalEval.stdError.toFixed(3)}`,
+            score: finalEval.score,
+            accepted: resolved,
+            tokens: 0,
+            costNano: '0',
+            latency: 45,
+            selfCheck: `Evaluación estadística sobre datos exactos BD Kavak (${scenario.orderId}): RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%, F1=${finalEval.f1.toFixed(2)}.`,
+            mistake:
+              finalEval.rmse > 0 || finalEval.violatedClaims.length > 0
+                ? `Residual estadístico RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%: faltaron [${finalEval.missingFacts.join(', ') || 'variables numéricas'}].`
+                : 'Sin error estadístico (RMSE=0.000, MAPE=0.0%, F1=1.00).',
+            leaderDecision
+          }
+        ],
+        steps: [
+          {
+            role: 'Consulta de espacios obligatorios RSI',
+            model: 'cerebro-contexto',
+            detail: `Consultados ${spacesConsulted.length} espacios (${lessonsAtStart} lecciones estadísticas previas).`
+          },
+          {
+            role: `Consulta exacta BD Kavak (${scenario.orderId} / ${scenario.stockId})`,
+            model: 'query_kavak_db',
+            detail: `Registros verificados=${dbResult.counts.total} · RMSE=${finalEval.rmse.toFixed(3)} · MAPE=${finalEval.mape.toFixed(1)}% · F1=${finalEval.f1.toFixed(2)} · Score=${finalEval.score}/100.`
+          }
+        ]
+      })
+      ;(data.phone ||= []).push(conv)
+
+      message(who, room, scenario.customer, 'Kavak México', scenario.customerMessage)
+      message(
+        who,
+        room,
+        'orquestador',
+        'cerebro-contexto',
+        `[contexto-previo] Espacios consultados: ${spacesConsulted.map((s) => `[[${s}]]`).join(', ')} (${lessonsAtStart} lecciones estadísticas activas).`
+      )
+      message(
+        who,
+        room,
+        `constructor-${tier}`,
+        'bd-kavak',
+        `[consulta-bd] query_kavak_db(table="all", query="${scenario.orderId} ${scenario.stockId}") -> ${dbResult.counts.total} registros exactos.`
+      )
+      event(
+        who,
+        'tool',
+        `constructor-${tier} → query_kavak_db`,
+        runId,
+        { table: 'all', query: `${scenario.orderId} ${scenario.stockId}`, room }
+      )
+      event(
+        who,
+        'tool.result',
+        `constructor-${tier} ← query_kavak_db (${dbResult.counts.total} registros exactos)`,
+        runId,
+        { counts: dbResult.counts, orderId: scenario.orderId, stockId: scenario.stockId, room }
+      )
+      message(
+        who,
+        room,
+        'evaluador-estadistico',
+        `constructor-${tier}`,
+        `[autochequeo] Ciclo ${cycleNumber}: Score=${finalEval.score}/100 · RMSE=${finalEval.rmse.toFixed(3)} · MAPE=${finalEval.mape.toFixed(1)}% · F1=${finalEval.f1.toFixed(2)}. ${finalEval.statisticalFeedback}`
+      )
+      message(
+        who,
+        room,
+        'supervisor-rsi',
+        'orquestador',
+        `[decision-lider] Decisión=${leaderDecision} · Reducción de error estadístico registrada en [[${requiredContextSpaces[0]}]].`
+      )
+      message(who, room, 'Kavak México', scenario.customer, finalAnswer)
+
+      recordCycleReflection(who, {
+        runId,
+        cycle: cycleNumber,
+        coordination,
+        agent: `constructor-${tier}`,
+        model: 'query_kavak_db+estadistica',
+        tier,
+        reviewerModel: 'statistical-evaluator',
+        score: finalEval.score,
+        accepted: resolved,
+        selfCheck: `RMSE=${finalEval.rmse.toFixed(3)} · MAPE=${finalEval.mape.toFixed(1)}% · F1=${finalEval.f1.toFixed(2)} · Desv.Est=${finalEval.stdError.toFixed(3)}`,
+        mistake:
+          finalEval.rmse > 0 || finalEval.violatedClaims.length > 0
+            ? `Error estadístico RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%: variables con residual > 0 [${finalEval.numericResiduals
+                .filter((r) => r.relativeError > 0)
+                .map((r) => `${r.field}(e=${r.relativeError.toFixed(2)})`)
+                .join(', ')}].`
+            : 'Residual estadístico cero (RMSE=0.000, MAPE=0.0%, F1=1.00).',
+        improvement: finalEval.statisticalFeedback,
+        leaderDecision,
+        spacesConsulted,
+        tokens: 0,
+        costNano: '0'
+      })
+
+      const lessonPage = savePage(who, {
+        title: `${lessonPrefix} · Kavak · Ciclo ${cycleNumber} (${scenario.orderId})`,
+        content: [
+          '#atencion-cliente #kavak-bd #estadistica-rsi',
+          `Situación: ${scenario.scenarioContext}`,
+          `Expediente: ${scenario.orderId} · Unidad: ${scenario.stockId}`,
+          `Métricas estadísticas: Score=${finalEval.score}/100, RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%, F1=${finalEval.f1.toFixed(2)}.`,
+          `Lección estadística para reducir RMSE: ${finalEval.statisticalFeedback}`,
+          `Enlaces: [[${requiredContextSpaces[0]}]] [[${requiredContextSpaces[1]}]] [[${requiredContextSpaces[2]}]]`
+        ].join('\n'),
+        enabled: true
+      })
+      conv.lessonPageId = lessonPage.id
+
+      event(
+        who,
+        'phone.delivered',
+        `Evaluación estadística BD Kavak · Ciclo ${cycleNumber} (${scenario.customer}): Score=${finalEval.score}/100 · RMSE=${finalEval.rmse.toFixed(3)} · MAPE=${finalEval.mape.toFixed(1)}%.`,
+        runId,
+        { room, scenarioId: scenario.id, score: finalEval.score, rmse: finalEval.rmse, mape: finalEval.mape }
+      )
+
+      cycleResults.push({
+        cycle: cycleNumber,
+        mode: 'statistical_db_calibration',
+        scenarioId: scenario.id,
+        title: scenario.title,
+        orderId: scenario.orderId,
+        stockId: scenario.stockId,
+        model: 'query_kavak_db+estadistica',
+        tier,
+        lessonsAtStart,
+        initialEvaluation: initialEval,
+        finalEvaluation: finalEval,
+        leaderDecision,
+        dbRecordsMatched: dbResult.counts.total,
+        resolved,
+        conversationId: convId,
+        runId
       })
     }
-
-    const run: Run = {
-      id: runId,
-      owner: who,
-      title: `[Simulación BD Kavak · Ciclo ${cycleNumber}] ${scenario.orderId} · ${scenario.customer}`,
-      prompt: scenario.customerMessage,
-      coordination,
-      mode: 'live',
-      status: 'completed',
-      model: effectiveModel,
-      reviewer: effectiveReviewer,
-      session: room,
-      createdAt,
-      updatedAt: new Date(Date.now() + idx * 1000 + 400).toISOString(),
-      unknownUsage: false,
-      budget: 0.05,
-      maxIterations: 2,
-      target: 85,
-      stopReason: finalEval.passed ? 'target' : 'iterations',
-      result: script.finalAnswer,
-      usage: {
-        input: Math.round(script.tokens * 0.65),
-        output: Math.round(script.tokens * 0.35),
-        cached: 0,
-        cacheWrite: 0,
-        reasoning: 0
-      },
-      costNano: '0',
-      attachments: [],
-      iterations,
-      steps: [
-        {
-          role:
-            coordination === 'autonomous'
-              ? 'Tablero autónomo Kavak'
-              : 'Orquestador y consulta de memoria RSI',
-          model: effectiveModel,
-          detail: `Consultados ${spacesConsulted.length} espacios obligatorios (${lessonsAtStart} lecciones previas).`
-        },
-        {
-          role: `Consulta BD Kavak (query_kavak_db · ${scenario.orderId} / ${scenario.stockId})`,
-          model: effectiveModel,
-          detail: `BD Kavak devolvió ${dbResult.counts.orders} orden, ${dbResult.counts.vehicles} vehículo y ${dbResult.counts.policies} políticas. Puntaje final: ${finalEval.score}/100.`
-        }
-      ]
-    }
-
-    ;(data.phone ||= []).push(conv)
-    data.runs.unshift(run)
-
-    message(who, room, scenario.customer, 'Kavak México', scenario.customerMessage)
-    message(
-      who,
-      room,
-      coordinatorRole,
-      'cerebro-contexto',
-      `[contexto-previo] Consulta obligatoria antes de actuar: ${spacesConsulted.map((s) => `[[${s}]]`).join(', ')} (${lessonsAtStart} lecciones activas).`
-    )
-    message(
-      who,
-      room,
-      agentRole,
-      'bd-kavak',
-      `[consulta-bd] query_kavak_db(table="all", query="${scenario.orderId} ${scenario.stockId}") -> ${dbResult.counts.orders} expediente(s), ${dbResult.counts.vehicles} unidad(es), ${dbResult.counts.policies} política(s).`
-    )
-    event(
-      who,
-      'tool',
-      `${agentRole} → query_kavak_db`,
-      runId,
-      { table: 'all', query: `${scenario.orderId} ${scenario.stockId}`, room }
-    )
-    event(
-      who,
-      'tool.result',
-      `${agentRole} ← query_kavak_db (${dbResult.counts.total} registros verificados en BD Kavak)`,
-      runId,
-      { counts: dbResult.counts, orderId: scenario.orderId, stockId: scenario.stockId, room }
-    )
-    message(
-      who,
-      room,
-      agentRole,
-      reviewerRole,
-      `[autochequeo] Ciclo ${cycleNumber} (${effectiveModel} · perfil ${script.tier}): cobertura BD=${initialEval.factCoverage}%, puntaje=${initialEval.score}/100. Error detectado: ${script.mistake}`
-    )
-    message(
-      who,
-      room,
-      reviewerRole,
-      coordinatorRole,
-      `[decision-lider] Decisión=${script.leaderDecision} · Puntaje final=${finalEval.score}/100 · Acción de mejora=${script.improvement}`
-    )
-    message(who, room, 'Kavak México', scenario.customer, script.finalAnswer)
-
-    recordCycleReflection(who, {
-      runId,
-      cycle: cycleNumber,
-      coordination,
-      agent: agentRole,
-      model: effectiveModel,
-      tier: script.tier,
-      reviewerModel: effectiveReviewer === 'same' ? `${effectiveModel}#reasoning` : effectiveReviewer,
-      score: finalEval.score,
-      accepted: finalEval.passed,
-      selfCheck: iterations[iterations.length - 1].selfCheck || '',
-      mistake: script.mistake,
-      improvement: script.improvement,
-      leaderDecision: script.leaderDecision,
-      nextModel: script.nextModel,
-      spacesConsulted,
-      tokens: script.tokens,
-      costNano: '0'
-    })
-
-    const lessonPage = savePage(who, {
-      title: `${lessonPrefix} · Kavak México · Ciclo ${cycleNumber} (${scenario.orderId})`,
-      content: [
-        '#atencion-cliente #kavak-bd #mejora-ciclo',
-        `Situación: ${scenario.scenarioContext}`,
-        `Primer mensaje del cliente: ${scenario.customerMessage}`,
-        `Expediente BD Kavak: ${scenario.orderId} · Unidad: ${scenario.stockId}`,
-        `Resultado: ${script.resolved ? 'resuelto' : 'no resuelto'} (${finalEval.score}/100)`,
-        `Donde se equivoco (${agentRole}): ${script.mistake}`,
-        `Lección: ${script.lessonNote}`,
-        `Enlaces: [[${requiredContextSpaces[0]}]] [[${requiredContextSpaces[1]}]] [[${requiredContextSpaces[2]}]]`
-      ].join('\n'),
-      enabled: true
-    })
-    conv.lessonPageId = lessonPage.id
-
-    event(
-      who,
-      'phone.delivered',
-      `Simulación BD Kavak · Ciclo ${cycleNumber} (${scenario.customer}): ${finalEval.score}/100 (${script.resolved ? 'resuelto' : 'requirió escalamiento'}).`,
-      runId,
-      { room, scenarioId: scenario.id, score: finalEval.score }
-    )
-
-    cycleResults.push({
-      cycle: cycleNumber,
-      scenarioId: scenario.id,
-      title: scenario.title,
-      orderId: scenario.orderId,
-      stockId: scenario.stockId,
-      model: effectiveModel,
-      tier: script.tier,
-      lessonsAtStart,
-      initialEvaluation: initialEval,
-      finalEvaluation: finalEval,
-      leaderDecision: script.leaderDecision,
-      dbRecordsMatched: dbResult.counts.total,
-      resolved: script.resolved,
-      conversationId: convId,
-      runId
-    })
   }
 
   save()
@@ -495,7 +491,7 @@ export function runKavakSimulation(
     cycle: c.cycle,
     score: c.finalEvaluation.score,
     tokens:
-      data.runs.find((r) => r.id === c.runId)?.usage.input! +
+      (data.runs.find((r) => r.id === c.runId)?.usage.input || 0) +
       (data.runs.find((r) => r.id === c.runId)?.usage.output || 0),
     model: c.model,
     tier: c.tier,
@@ -507,20 +503,172 @@ export function runKavakSimulation(
     points[points.length - 1]?.score || 0,
     100,
     24,
-    'Precisión final Kavak'
+    'Exactitud estadística Kavak'
   )
 
+  const firstRmse = cycleResults[0]?.finalEvaluation.rmse ?? 0
+  const lastRmse = cycleResults.at(-1)?.finalEvaluation.rmse ?? 0
+  const firstMape = cycleResults[0]?.finalEvaluation.mape ?? 0
+  const lastMape = cycleResults.at(-1)?.finalEvaluation.mape ?? 0
+
   return {
-    simulation: 'kavak-rsi-4-cycles',
-    isSimulated: true,
-    note: 'Ejecución determinista de demostración sobre la base de datos interna de Kavak. Sin cargos de API externa (costo $0.00).',
+    executionMode: liveProvider ? 'live_llm' : 'statistical_db_calibration',
+    note: liveProvider
+      ? 'Ejecución real con proveedor LLM activo y evaluación estadística exacta contra la base de datos Kavak.'
+      : 'Calibración estadística determinista sobre registros exactos de la BD Kavak (conecta una clave de API en Proveedores para medir llamadas reales a modelos LLM).',
     coordination,
-    singleApi,
     cycles: cycleResults,
+    statisticalSummary: {
+      firstRmse,
+      lastRmse,
+      rmseReductionPct:
+        firstRmse > 0 ? Number((((firstRmse - lastRmse) / firstRmse) * 100).toFixed(1)) : 0,
+      firstMape,
+      lastMape,
+      meanF1: Number(
+        (
+          cycleResults.reduce((acc, c) => acc + c.finalEvaluation.f1, 0) /
+          Math.max(1, cycleResults.length)
+        ).toFixed(3)
+      )
+    },
     trend,
     progressBar,
     asciiChart,
     reflectionsCount: listCycleReflections(who).length
+  }
+}
+
+export function buildEvalsReport(who: string) {
+  const userRuns = data.runs.filter((r) => r.owner === who)
+  const userEvents = data.events.filter((e) => e.owner === who)
+  const reflections = listCycleReflections(who)
+  const pages = listPages(who)
+
+  const evalRows = userRuns
+    .map((r, idx) => {
+      const sc = detectKavakScenario(`${r.title}\n${r.prompt}`)
+      const lastIt = r.iterations.at(-1)
+      const stat = sc && (r.result || lastIt?.candidate)
+        ? evaluateKavakResponse(sc.id, r.result || lastIt?.candidate || '')
+        : undefined
+      return {
+        runId: r.id,
+        cycleOrder: userRuns.length - idx,
+        title: r.title,
+        prompt: r.prompt.slice(0, 220),
+        status: r.status,
+        coordination: r.coordination || 'orchestrated',
+        model: lastIt?.model || r.model,
+        tier: lastIt?.tier || 'low',
+        reviewer: r.reviewer,
+        iterationsCount: r.iterations.length,
+        score: stat?.score ?? lastIt?.score ?? 0,
+        accepted: lastIt?.accepted ?? (r.status === 'completed'),
+        leaderDecision: lastIt?.leaderDecision || 'accept',
+        mistake: lastIt?.mistake || '',
+        selfCheck: lastIt?.selfCheck || '',
+        tokens: r.usage.input + r.usage.output,
+        costNano: r.costNano,
+        createdAt: r.createdAt,
+        kavakEval: stat || null
+      }
+    })
+    .reverse()
+
+  const scoredRows = evalRows.filter((r) => r.score > 0 || r.kavakEval)
+  const points = scoredRows.map((r, i) => ({
+    cycle: i + 1,
+    score: r.score,
+    tokens: r.tokens,
+    model: r.model,
+    tier: r.tier,
+    leaderDecision: r.leaderDecision,
+    rmse: r.kavakEval?.rmse ?? Number(((100 - r.score) / 100).toFixed(3)),
+    mape: r.kavakEval?.mape ?? Number((100 - r.score).toFixed(1)),
+    f1: r.kavakEval?.f1 ?? Number((r.score / 100).toFixed(2))
+  }))
+
+  const trend = computePerformanceTrend(points)
+  const loopStageCounts = [
+    {
+      id: '01',
+      name: 'Contexto y Memoria RSI',
+      whatWeDo: 'Consulta los 3 espacios obligatorios (Errores RSI, Lecciones, Reglas) antes de ejecutar.',
+      count:
+        userEvents.filter((e) => e.type === 'context.retrieved').length + reflections.length,
+      detail: `${pages.length} páginas activas en Cerebro de Contexto`
+    },
+    {
+      id: '02',
+      name: 'Primera Pasada y Skills',
+      whatWeDo: 'Aplica compresión Caveman, trazabilidad Ponytail y verificación Evidence First.',
+      count: Math.max(
+        userEvents.filter((e) => e.type === 'rsi.first_pass').length,
+        userRuns.length
+      ),
+      detail: `${data.skills.filter((s) => s.enabled).length} skills activas`
+    },
+    {
+      id: '03',
+      name: 'Router / Perfil Cognitivo',
+      whatWeDo: 'Inicia en modelo pequeño (low) para ahorrar tokens y escala solo cuando el error lo exige.',
+      count: Math.max(userEvents.filter((e) => e.type === 'routed').length, userRuns.length),
+      detail: `Escalado low -> medium -> high -> reasoning`
+    },
+    {
+      id: '04',
+      name: 'Orquestador / Tablero',
+      whatWeDo: 'Coordina el plan con orquestador central o mediante el tablero de equipo autónomo.',
+      count: userRuns.length,
+      detail: `${userRuns.filter((r) => r.coordination === 'autonomous').length} autónomas · ${userRuns.filter((r) => r.coordination !== 'autonomous').length} orquestadas`
+    },
+    {
+      id: '05',
+      name: 'Ejecución + Base de Datos',
+      whatWeDo: 'El constructor consulta query_kavak_db y herramientas deterministas para extraer datos exactos.',
+      count: userEvents.filter((e) =>
+        ['tool', 'tool.result', 'kavak.query', 'analysis.verified'].includes(e.type)
+      ).length,
+      detail: `${kavakVehicles.length} vehículos · ${kavakOrders.length} pedidos · ${kavakPolicies.length} políticas en BD`
+    },
+    {
+      id: '06',
+      name: 'Eval Estadística + Líder',
+      whatWeDo: 'Calcula RMSE, MAPE, Desv.Est y F1 contra los valores exactos y decide mantener, escalar o crear subagente.',
+      count: scoredRows.length,
+      detail: points.length
+        ? `Último RMSE=${points.at(-1)!.rmse.toFixed(3)} · F1=${points.at(-1)!.f1.toFixed(2)}`
+        : 'Esperando primera evaluación'
+    },
+    {
+      id: '07',
+      name: 'Retroalimentación RSI',
+      whatWeDo: 'Escribe el residual estadístico y la regla correctiva en el Cerebro de Contexto para el siguiente ciclo.',
+      count: reflections.length,
+      detail: `${reflections.length} ciclos registrados en bitácora RSI`
+    }
+  ]
+
+  return {
+    summary: {
+      totalRuns: userRuns.length,
+      evaluatedRuns: scoredRows.length,
+      reflectionsCount: reflections.length,
+      lessonsCount: countKavakLessons(who),
+      databaseCounts: {
+        vehicles: kavakVehicles.length,
+        orders: kavakOrders.length,
+        policies: kavakPolicies.length,
+        scenarios: kavakScenarios.length
+      }
+    },
+    trend,
+    points,
+    loopStageCounts,
+    evalRows,
+    reflections,
+    scenarios: kavakScenarios
   }
 }
 
@@ -535,6 +683,10 @@ export function registerKavak(app: Express) {
       ...queryKavakDatabase(table, q),
       scenarios: kavakScenarios
     })
+  })
+
+  app.get('/api/kavak/evals', requireUser, (req, res) => {
+    res.json(buildEvalsReport(owner(req)))
   })
 
   app.post(
@@ -565,24 +717,34 @@ export function registerKavak(app: Express) {
     })
   )
 
-  app.post(
-    '/api/kavak/simulate',
-    requireUser,
-    asyncRoute((req, res) => {
-      if (process.env.AERIS_RSI_ENABLED === 'false') {
-        res.status(403).json({
-          error: 'RSI cerrado para este servidor. No se permiten cambios de aprendizaje.'
-        })
-        return
-      }
-      const input = z
-        .object({
-          coordination: z.enum(['orchestrated', 'autonomous']).default('orchestrated'),
-          singleApi: z.boolean().default(true),
-          resetPreviousSimulation: z.boolean().default(true)
-        })
-        .parse(req.body || {})
-      res.status(201).json(runKavakSimulation(owner(req), input))
+  const runSuiteHandler = asyncRoute(async (req, res) => {
+    if (process.env.AERIS_RSI_ENABLED === 'false') {
+      res.status(403).json({
+        error: 'RSI cerrado para este servidor. No se permiten cambios de aprendizaje.'
+      })
+      return
+    }
+    const input = z
+      .object({
+        coordination: z.enum(['orchestrated', 'autonomous']).default('orchestrated'),
+        model: z.string().max(100).default('auto'),
+        reviewer: z.string().max(100).default('same'),
+        maxIterations: z.number().int().min(1).max(6).default(2),
+        singleApi: z.boolean().optional(),
+        resetPreviousSimulation: z.boolean().optional(),
+        resetPrevious: z.boolean().optional()
+      })
+      .parse(req.body || {})
+    const result = await runKavakBenchmark(owner(req), {
+      coordination: input.coordination,
+      model: input.model,
+      reviewer: input.singleApi ? 'same' : input.reviewer,
+      maxIterations: input.maxIterations,
+      resetPrevious: input.resetPrevious ?? input.resetPreviousSimulation ?? true
     })
-  )
+    res.status(201).json(result)
+  })
+
+  app.post('/api/kavak/benchmark', requireUser, runSuiteHandler)
+  app.post('/api/kavak/simulate', requireUser, runSuiteHandler)
 }

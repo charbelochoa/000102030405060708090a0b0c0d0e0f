@@ -51,16 +51,24 @@ Documento técnico para el equipo y agentes colaboradores (Codex / Antigravity).
      - Nuevo comando `./aeris.cmd watch [--room <sala>]` y `follow(id)` muestran en vivo la barra de progreso y la gráfica ASCII al finalizar misiones iterativas.
    - **Gráfica SVG (`src/Charts.tsx`)**: `ImprovementChart` traza ahora la recta de regresión lineal y muestra en cabecera la pendiente ($\text{pts/ciclo}$) y linealidad ($R^2$).
 
-5. **Base de datos interna de Kavak y batería simulada de automejora (`shared/kavak.ts`, `server/kavak.ts`)**
-   - **Base de datos determinista en el servidor**:
-     - `vehicles` (`KVK-1042`, `KVK-2089`, `KVK-3115`, `KVK-4090`, `KVK-5120`): precios en MXN, kilometraje, transmisión, sede (`Lerma`, `Antara Fashion Hall`, `Patio Santa Fe`, `Midtown Guadalajara`, `Nuevo Sur Monterrey`), estado de inspección de 240 puntos y garantía elegible.
-     - `orders` (`ORD-9044`, `ORD-8821`, `ORD-7712`, `ORD-6509`): expedientes de clientes con días desde entrega, kilómetros recorridos, elegibilidad de devolución (7 días o 300 km), garantía activa y estado de financiamiento/validación biométrica.
-     - `policies` (`POL-DEV-01`, `POL-GAR-02`, `POL-INSP-03`, `POL-FIN-04`): reglas operativas oficiales para verificación determinista.
-   - **Herramienta de agente `query_kavak_db` (`server/tools.ts`)**:
-     - Permite que los agentes en misiones o en el teléfono de clientes consulten `vehicles`, `orders` y `policies` antes de responder, registrando eventos `kavak.query`, `tool` y `tool.result` visibles en la terminal CLI.
-   - **Simulación de automejora de 4 ciclos (`POST /api/kavak/simulate` y `./aeris.cmd kavak --simulate`)**:
-     - Ejecuta los 4 casos de Kavak ciclo por ciclo verificando cada respuesta con `evaluateKavakResponse` contra los hechos de la base de datos (`expectedFacts` y `forbiddenClaims`).
-     - Registra en cada ciclo dónde se equivocó el agente, qué hizo para mejorar y la lección en `[[Espacio de errores y mejoras RSI]]` y `[[Lecciones de atención]]`, elevando la precisión de forma lineal (`37 -> 83 -> 87 -> 96`, $R^2 > 0.75$) y mostrando cómo el modelo pequeño (`low`) resuelve el ciclo 4 al primer intento gracias a las 3 lecciones previas.
+5. **Base de datos exacta de Kavak, Evals Estadísticas y Gráfica del Loop RSI (`shared/kavak.ts`, `server/kavak.ts`, `src/Evals.tsx`, `shared/catalog.ts`)**
+   - **Catálogo ampliado de modelos LLM (`shared/catalog.ts`)**: 30 modelos en los 7 proveedores (`OpenAI`, `Anthropic`, `Google Gemini`, `DeepSeek`, `xAI`, `NVIDIA NIM` e `Inferencia local`).
+   - **Catálogo ampliado de la base de datos Kavak en el servidor (`shared/kavak.ts`)**:
+     - `vehicles` (20 modelos específicos de Mazda, Volkswagen, Toyota, Nissan, Honda, KIA, Hyundai, Chevrolet, Ford, BMW, Audi, SEAT, Cupra, Suzuki, MG, Peugeot, Chirey, BYD, Subaru y Jeep) con precio exacto en MXN, kilometraje, caballaje, transmisión, sede, puntos aprobados sobre 240, días de garantía, porcentaje/monto de enganche y mensualidad a 48 meses.
+     - `orders` (6 expedientes `ORD-9044`, `ORD-8821`, `ORD-7712`, `ORD-6509`, `ORD-5410`, `ORD-4328`) con datos numéricos exactos (`daysSinceDelivery`, `kmSinceDelivery`, `priceMxn`, `downPaymentMxn`, `monthlyPaymentMxn`, `warrantyDays`).
+     - `policies` (`POL-DEV-01`, `POL-GAR-02`, `POL-INSP-03`, `POL-FIN-04`).
+   - **Cálculo Estadístico del Error sobre Datos Exactos (`evaluateKavakResponse` en `shared/kavak.ts`)**:
+     - Extrae los valores numéricos y categóricos de la respuesta del agente y calcula residuales por variable $e_i = \min(1, |\hat{y}_i - y_i| / |y_i|)$ frente a los objetivos exactos (`numericTargets`) de la base de datos:
+       - **RMSE normalizado**: $\text{RMSE} = \sqrt{\frac{1}{N}\sum_{j=1}^N e_j^2}$
+       - **MAPE**: $\text{MAPE} = \frac{1}{K}\sum_{i=1}^K e_i \times 100\%$
+       - **Desviación estándar del residual ($\sigma_e$)**: $\sqrt{\frac{1}{N}\sum_{j=1}^N (e_j - \bar{e})^2}$
+       - **Precisión, Recall y $F_1$-Score** de hechos verificados en BD.
+     - En `server/engine.ts`, cuando una misión o conversación corresponde a un caso de Kavak, el motor inyecta el diagnóstico estadístico (`RMSE`, `MAPE`, `F1` y lista exacta de variables con residual $> 0$) al revisor y al Cerebro de Contexto (`[[Espacio de errores y mejoras RSI]]` y `[[Lecciones de atención]]`) para que el modelo reduzca su error estadístico en la siguiente iteración o ciclo.
+   - **Dónde ver las gráficas del Loop RSI y las Evals (`src/Evals.tsx`)**:
+     1. **Sección principal en la barra lateral: `Evals y Loop RSI` (`/app#evals`)**
+     2. **Integrado en `Métricas y progreso` (`/app#metrics`)**
+     3. **Integrado en `Teléfono de clientes` (`/app#phone`, pestaña `Gráfica Loop y Evals`)**
+     4. **En la terminal CLI**: `./aeris.cmd evals [--run-kavak]` y `./aeris.cmd kavak --simulate`
 
 6. **Rama Git (`main` y `phone-test`)**
    - Rama remota: `https://github.com/charbelochoa/000102030405060708090a0b0c0d0e0f/tree/phone-test`
@@ -100,10 +108,13 @@ Documento técnico para el equipo y agentes colaboradores (Codex / Antigravity).
 # Graficar en la terminal la barra de progreso, desempeño, linealidad (R^2) y bitácora de errores/mejoras:
 .\aeris.cmd metrics
 
+# Ver el diagrama del Loop RSI (7 etapas), qué se está resolviendo y la tabla de Evals con RMSE, MAPE y F1:
+.\aeris.cmd evals --run-kavak
+
 # Consultar la base de datos de Kavak en el servidor:
 .\aeris.cmd kavak --query ORD-9044
 
-# Ejecutar la simulación de 4 ciclos de automejora sobre la base de datos de Kavak y ver gráficas ASCII:
+# Ejecutar las Evals de 4 ciclos sobre la base de datos de Kavak y ver gráficas ASCII:
 .\aeris.cmd kavak --simulate
 
 # Filtrar una sala específica del teléfono en la CLI:
