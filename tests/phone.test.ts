@@ -29,6 +29,17 @@ const base = `http://127.0.0.1:${port}/api`
 const headers = { Authorization: `Bearer ${cliToken}`, 'Content-Type': 'application/json' }
 
 after(async () => {
+  const delivered = () =>
+    data.runs.every((r) =>
+      data.events.some(
+        (e) => e.runId === r.id && ['phone.failed', 'phone.delivered'].includes(e.type)
+      )
+    )
+  for (let i = 0; i < 100 && !delivered(); i++) await delay(20)
+  assert.ok(
+    delivered(),
+    'Los turnos deben terminar su entrega antes de retirar el almacenamiento de prueba.'
+  )
   server.closeAllConnections()
   await new Promise<void>((done) => server.close(() => done()))
   await rm(root, { recursive: true, force: true })
@@ -60,7 +71,6 @@ test('phone keeps the selected coordination mode on its missions', async () => {
   })
   assert.equal(sent.response.status, 202)
   assert.equal(data.runs.find((r) => r.id === sent.value.runIds[0])?.coordination, 'autonomous')
-  await delay(700)
 })
 
 test('a conversation records the customer message and reports a failed turn without inventing a reply', async () => {

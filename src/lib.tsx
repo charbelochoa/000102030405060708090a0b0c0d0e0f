@@ -1,18 +1,37 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { Snapshot } from '../shared/types'
 
+export const apiUrl = (path: string) =>
+  `${(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')}/api${path}`
+const remoteApi = Boolean(import.meta.env.VITE_API_URL)
+
+export async function apiFile(path: string) {
+  const token = sessionStorage.getItem('aeris-session')
+  const response = await fetch(apiUrl(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    signal: AbortSignal.timeout(30000)
+  })
+  if (!response.ok) throw new Error(`No se pudo descargar el archivo (${response.status}).`)
+  return response.blob()
+}
+
 export async function api<T = any>(
   path: string,
   body?: unknown,
   method = body === undefined ? 'GET' : 'POST'
 ): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+  const token = sessionStorage.getItem('aeris-session')
+  const response = await fetch(apiUrl(path), {
     method,
     credentials: 'same-origin',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    headers: {
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(
       path.startsWith('/lab/') ||
+        /^\/providers\/[^/]+\/models$/.test(path) ||
         path.startsWith('/benchmarks') ||
         path.startsWith('/evolution/cases')
         ? 150000
@@ -23,6 +42,8 @@ export async function api<T = any>(
     throw new Error('El motor todavía no está disponible. Reintentando la conexión.')
   const result = await response.json()
   if (!response.ok) throw new Error(result.error || `Error ${response.status}`)
+  if (result.sessionToken) sessionStorage.setItem('aeris-session', result.sessionToken)
+  if (path === '/auth/logout') sessionStorage.removeItem('aeris-session')
   return result as T
 }
 
@@ -71,6 +92,40 @@ export function useEngine() {
   }, [refresh])
   useEffect(() => {
     if (!snapshot?.user) return
+    if (remoteApi) {
+      const controller = new AbortController()
+      let retry: ReturnType<typeof setTimeout>
+      const listen = async () => {
+        try {
+          const token = sessionStorage.getItem('aeris-session')
+          const response = await fetch(apiUrl('/events'), {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            signal: controller.signal
+          })
+          if (!response.ok || !response.body) throw new Error('Eventos no disponibles')
+          setConnected(true)
+          const reader = response.body.getReader()
+          try {
+            while (!controller.signal.aborted) {
+              const chunk = await reader.read()
+              if (chunk.done) break
+              void refresh()
+            }
+          } finally {
+            reader.releaseLock()
+          }
+        } catch {
+          setConnected(false)
+        }
+        if (!controller.signal.aborted) retry = setTimeout(() => void listen(), 3000)
+      }
+      void listen()
+      return () => {
+        controller.abort()
+        clearTimeout(retry)
+        setConnected(false)
+      }
+    }
     const events = new EventSource('/api/events')
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     events.onopen = () => {
