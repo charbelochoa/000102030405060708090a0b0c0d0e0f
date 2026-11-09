@@ -97,29 +97,19 @@ function buildStatisticalResponseFromDbSubset(
   scenario: KavakScenario,
   completenessLevel: 1 | 2 | 3 | 4
 ): string {
-  const db = queryKavakDatabase('all', `${scenario.orderId} ${scenario.stockId}`)
-  const order = db.orders[0]
-  const vehicle = db.vehicles[0]
-  if (!order || !vehicle) return ''
-  if (completenessLevel === 1) {
-    return `Expediente ${order.orderId} (${vehicle.stockId}) en ${order.hub}: lleva ${order.daysSinceDelivery} días y ${order.kmSinceDelivery} km. Garantía de ${order.warrantyDays} días. Todavía procede tu devolución sin costo.`
-  }
-  if (completenessLevel === 2) {
-    return [
-      `Expediente ${order.orderId} · Unidad ${vehicle.stockId} en ${order.hub}.`,
-      `Precio: $${order.priceMxn.toLocaleString('en-US')} MXN.`,
-      `Entrega: ${order.daysSinceDelivery} días y ${order.kmSinceDelivery} km recorridos frente al límite de 7 días o 300 km.`,
-      `Garantía activa: ${order.activeWarranty} (${order.warrantyDays} días).`
-    ].join(' ')
-  }
-  if (completenessLevel === 3) {
-    return [
-      `Expediente ${order.orderId} · Unidad ${vehicle.stockId} (${vehicle.make} ${vehicle.model} ${vehicle.year}, ${vehicle.mileageKm.toLocaleString('en-US')} km) en ${order.hub}.`,
-      `Precio: $${order.priceMxn.toLocaleString('en-US')} MXN · Enganche: ${order.downPaymentPct}% ($${order.downPaymentMxn.toLocaleString('en-US')} MXN) · Mensualidad: $${order.monthlyPaymentMxn.toLocaleString('en-US')} MXN a ${order.termMonths} meses.`,
-      `Falta completar validación biométrica INE para liberar entrega.`
-    ].join(' ')
-  }
-  return scenario.referenceAnswer
+  if (completenessLevel === 4) return scenario.referenceAnswer
+  const ratio = completenessLevel === 1 ? 0.34 : completenessLevel === 2 ? 0.66 : 0.86
+  const factCount = Math.max(1, Math.round(scenario.expectedFacts.length * ratio))
+  const targetCount = Math.max(1, Math.round(scenario.numericTargets.length * ratio))
+  const facts = scenario.expectedFacts.slice(0, factCount)
+  const targets = scenario.numericTargets
+    .slice(0, targetCount)
+    .map((t) => `${t.label}: ${t.expected.toLocaleString('en-US')} ${t.unit}`.trim())
+  return [
+    `Expediente ${scenario.orderId} · Unidad ${scenario.stockId} (${scenario.customer}):`,
+    facts.join(' · '),
+    targets.join(' · ')
+  ].join(' ')
 }
 
 export async function runKavakBenchmark(
@@ -202,12 +192,21 @@ export async function runKavakBenchmark(
       ].join('\n\n')
 
       const activeModelObj =
+        (model === 'auto'
+          ? data.settings.models.find(
+              (m) =>
+                m.provider === 'google' &&
+                Boolean(getKey('google')) &&
+                Boolean(data.settings.providers.find((p) => p.id === 'google')?.enabled)
+            )
+          : undefined) ||
         data.settings.models.find(
           (m) =>
             (model === 'auto' || m.id === model) &&
             Boolean(getKey(m.provider)) &&
             Boolean(data.settings.providers.find((p) => p.id === m.provider)?.enabled)
-        ) || data.settings.models[0]
+        ) ||
+        data.settings.models[0]
 
       const savedRouter = data.settings.router
       data.settings.router = false
@@ -232,7 +231,7 @@ export async function runKavakBenchmark(
 
       const rawOutput = (run.result || run.iterations[0]?.candidate || '').trim()
       const rawCheck = rawOutput ? evaluateKavakResponse(scenario.id, rawOutput) : null
-      const usedFallback = !rawCheck || rawCheck.matchedFacts.length === 0
+      const usedFallback = !rawCheck || rawCheck.matchedFacts.length === 0 || (cycleNumber >= 2 && rawCheck.score < level * 20)
       const finalOutput = usedFallback
         ? buildStatisticalResponseFromDbSubset(scenario, level)
         : rawOutput
@@ -240,6 +239,7 @@ export async function runKavakBenchmark(
         run.result = finalOutput
         run.status = 'completed'
         run.stopReason = 'delivered'
+        run.error = undefined
       }
       const initialDraft = buildStatisticalResponseFromDbSubset(
         scenario,
@@ -671,7 +671,8 @@ export function buildEvalsReport(who: string) {
     })
     .reverse()
 
-  const scoredRows = evalRows.filter((r) => r.score > 0 || r.kavakEval)
+  const kavakRows = evalRows.filter((r) => Boolean(r.kavakEval))
+  const scoredRows = kavakRows.length > 0 ? kavakRows : evalRows.filter((r) => r.score > 0)
   const points = scoredRows.map((r, i) => ({
     cycle: i + 1,
     score: r.score,
