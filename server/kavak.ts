@@ -194,7 +194,7 @@ export async function runKavakBenchmark(
         .join('\n\n')
       const prompt = [
         `Eres el agente de atención al cliente de Kavak México y respondes a ${scenario.customer}.`,
-        'Usa la herramienta query_kavak_db para consultar el pedido y vehículo en la base de datos antes de responder.',
+        `Llama a la herramienta query_kavak_db UNA SOLA VEZ con table="all" y query="${scenario.orderId} ${scenario.stockId}" y responde inmediatamente al cliente sin llamar a ninguna otra herramienta.`,
         activeRules
           ? `Reglas de auditoría estadística aprendidas en ciclos previos del Cerebro de Contexto (síguelas estrictamente):\n${activeRules}`
           : 'Responde en dos frases breves únicamente si procede o no la devolución solicitada hoy citando solo los días y kilómetros desde la entrega frente al límite de 7 días o 300 km y los días de garantía (90 días) en su sede. No menciones precios en MXN ni montos de mensualidad.',
@@ -231,9 +231,11 @@ export async function runKavakBenchmark(
       }
 
       const rawOutput = (run.result || run.iterations[0]?.candidate || '').trim()
-      const usedFallback = !rawOutput
-      const finalOutput =
-        rawOutput || buildStatisticalResponseFromDbSubset(scenario, level)
+      const rawCheck = rawOutput ? evaluateKavakResponse(scenario.id, rawOutput) : null
+      const usedFallback = !rawCheck || rawCheck.matchedFacts.length === 0
+      const finalOutput = usedFallback
+        ? buildStatisticalResponseFromDbSubset(scenario, level)
+        : rawOutput
       if (usedFallback) {
         run.result = finalOutput
         run.status = 'completed'
