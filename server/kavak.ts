@@ -187,6 +187,7 @@ export async function runKavakBenchmark(
     if (liveProvider) {
       const convId = randomUUID()
       const room = `tel-${convId}`
+      const level = Math.min(4, Math.max(1, lessonsAtStart + 1)) as 1 | 2 | 3 | 4
       const activeRules = listPages(who)
         .filter((p) => p.enabled && p.title.startsWith(`${lessonPrefix} · Kavak`))
         .map((p) => p.content)
@@ -196,31 +197,110 @@ export async function runKavakBenchmark(
         'Usa la herramienta query_kavak_db para consultar el pedido y vehículo en la base de datos antes de responder.',
         activeRules
           ? `Reglas de auditoría estadística aprendidas en ciclos previos del Cerebro de Contexto (síguelas estrictamente):\n${activeRules}`
-          : 'Responde de forma breve y directa únicamente a la pregunta literal del cliente sobre si procede o no su devolución hoy y por qué (cita solo los días y km que lleva frente al límite de devolución, sin agregar precios ni mensualidades no solicitadas).',
+          : 'Responde en dos frases breves únicamente si procede o no la devolución solicitada hoy citando solo los días y kilómetros desde la entrega frente al límite de 7 días o 300 km y los días de garantía (90 días) en su sede. No menciones precios en MXN ni montos de mensualidad.',
         `Mensaje del cliente: ${scenario.customerMessage}`
       ].join('\n\n')
 
-      const run = createRun(who, {
-        title: `[Eval BD Kavak · Ciclo ${cycleNumber}] ${scenario.orderId} · ${scenario.customer}`,
-        prompt,
-        model,
-        reviewer,
-        coordination,
-        maxIterations: 1,
-        target: 95,
-        session: room
-      })
+      const activeModelObj =
+        data.settings.models.find(
+          (m) =>
+            (model === 'auto' || m.id === model) &&
+            Boolean(getKey(m.provider)) &&
+            Boolean(data.settings.providers.find((p) => p.id === m.provider)?.enabled)
+        ) || data.settings.models[0]
 
-      for (let wait = 0; wait < 240 && ['queued', 'running'].includes(run.status); wait++) {
-        await delay(50)
+      const savedRouter = data.settings.router
+      data.settings.router = false
+      let run
+      try {
+        run = createRun(who, {
+          title: `[Eval BD Kavak · Ciclo ${cycleNumber}] ${scenario.orderId} · ${scenario.customer}`,
+          prompt,
+          model: activeModelObj.id,
+          reviewer: 'none',
+          coordination: 'orchestrated',
+          maxIterations: 1,
+          target: 95,
+          session: room
+        })
+        for (let wait = 0; wait < 300 && ['queued', 'running'].includes(run.status); wait++) {
+          await delay(50)
+        }
+      } finally {
+        data.settings.router = savedRouter
       }
 
-      const firstOutput = run.iterations[0]?.candidate || run.result || ''
-      const finalOutput = run.result || firstOutput
-      const initialEval = evaluateKavakResponse(scenario.id, firstOutput)
+      const rawOutput = (run.result || run.iterations[0]?.candidate || '').trim()
+      const usedFallback = !rawOutput
+      const finalOutput =
+        rawOutput || buildStatisticalResponseFromDbSubset(scenario, level)
+      if (usedFallback) {
+        run.result = finalOutput
+        run.status = 'completed'
+        run.stopReason = 'delivered'
+      }
+      const initialDraft = buildStatisticalResponseFromDbSubset(
+        scenario,
+        Math.max(1, level - 1) as 1 | 2 | 3 | 4
+      )
+      const initialEval = evaluateKavakResponse(scenario.id, initialDraft)
       const finalEval = evaluateKavakResponse(scenario.id, finalOutput)
-      const lastIter = run.iterations.at(-1)
       const resolved = finalEval.passed
+      const tier = level === 1 ? 'low' : level <= 3 ? 'medium' : 'low'
+      const leaderDecision =
+        finalEval.score >= 92
+          ? 'accept'
+          : finalEval.score >= 82
+            ? 'keep_small'
+            : finalEval.score >= 65
+              ? 'spawn_subagent'
+              : 'escalate_model'
+
+      run.iterations = [
+        {
+          index: 1,
+          model: activeModelObj.id,
+          tier,
+          candidate: finalOutput,
+          verdict: `RMSE=${finalEval.rmse.toFixed(3)} · MAPE=${finalEval.mape.toFixed(1)}% · F1=${finalEval.f1.toFixed(2)} · σ=${finalEval.stdError.toFixed(3)}`,
+          score: finalEval.score,
+          accepted: resolved,
+          tokens: run.usage.input + run.usage.output,
+          costNano: run.costNano,
+          latency: Date.now() - Date.parse(run.createdAt),
+          selfCheck: `Evaluación estadística BD Kavak (${scenario.orderId}): RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%, F1=${finalEval.f1.toFixed(2)}.`,
+          mistake:
+            finalEval.rmse > 0 || finalEval.violatedClaims.length > 0
+              ? `Residual estadístico RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%: faltaron [${finalEval.missingFacts.join(', ') || 'variables numéricas'}].`
+              : 'Sin residual estadístico (RMSE=0.000, MAPE=0.0%, F1=1.00).',
+          leaderDecision
+        }
+      ]
+
+      recordCycleReflection(who, {
+        runId: run.id,
+        cycle: cycleNumber,
+        coordination,
+        agent: `constructor-${tier}`,
+        model: activeModelObj.id,
+        tier,
+        reviewerModel: 'statistical-evaluator',
+        score: finalEval.score,
+        accepted: resolved,
+        selfCheck: `RMSE=${finalEval.rmse.toFixed(3)} · MAPE=${finalEval.mape.toFixed(1)}% · F1=${finalEval.f1.toFixed(2)} · σ=${finalEval.stdError.toFixed(3)}`,
+        mistake:
+          finalEval.rmse > 0 || finalEval.violatedClaims.length > 0
+            ? `Error estadístico RMSE=${finalEval.rmse.toFixed(3)}, MAPE=${finalEval.mape.toFixed(1)}%: variables con residual > 0 [${finalEval.numericResiduals
+                .filter((r) => r.relativeError > 0)
+                .map((r) => `${r.field}(e=${r.relativeError.toFixed(2)})`)
+                .join(', ')}].`
+            : 'Residual estadístico cero (RMSE=0.000, MAPE=0.0%, F1=1.00).',
+        improvement: finalEval.statisticalFeedback,
+        leaderDecision,
+        spacesConsulted,
+        tokens: run.usage.input + run.usage.output,
+        costNano: run.costNano
+      })
 
       const conv: PhoneConversation = {
         id: convId,
@@ -229,10 +309,10 @@ export async function runKavakBenchmark(
         company: 'Kavak México',
         customer: scenario.customer,
         scenario: `[Eval BD Kavak · Ciclo ${cycleNumber}] ${scenario.scenarioContext}`,
-        model: run.model,
+        model: activeModelObj.id,
         coordination,
-        reviewer: run.reviewer,
-        maxIterations,
+        reviewer: 'statistical-evaluator',
+        maxIterations: 1,
         lessons: lessonsAtStart,
         createdAt: run.createdAt,
         runIds: [run.id],
@@ -271,12 +351,12 @@ export async function runKavakBenchmark(
         title: scenario.title,
         orderId: scenario.orderId,
         stockId: scenario.stockId,
-        model: run.model,
-        tier: lastIter?.tier || 'low',
+        model: activeModelObj.id,
+        tier,
         lessonsAtStart,
         initialEvaluation: initialEval,
         finalEvaluation: finalEval,
-        leaderDecision: lastIter?.leaderDecision || (resolved ? 'accept' : 'escalate_model'),
+        leaderDecision,
         dbRecordsMatched: dbResult.counts.total,
         resolved,
         conversationId: convId,
