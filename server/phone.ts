@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { requireUser } from './auth'
 import { data, event, message, save } from './store'
 import { createRun } from './engine'
-import { listPages, savePage } from './brain'
+import { listPages, retrieveContext, savePage } from './brain'
 import { lessonPrefix, type PhoneConversation, type PhoneConversationView } from '../shared/phone'
 
 const owner = (req: Request) => req.aerisUser!.id
@@ -35,14 +35,28 @@ function view(c: PhoneConversation): PhoneConversationView {
     .filter((r): r is NonNullable<typeof r> => Boolean(r))
   const ids = new Set(c.runIds)
   const ledger = (data.usageLedger || []).filter((l) => l.owner === c.owner && ids.has(l.runId))
+  const events = data.events.filter((e) => {
+    if (e.owner !== c.owner) return false
+    if (e.runId && ids.has(e.runId)) return true
+    if (e.data && typeof e.data === 'object' && 'room' in e.data) {
+      return (e.data as { room?: string }).room === c.room
+    }
+    return false
+  })
   return {
     ...c,
     messages: data.messages.filter((m) => m.owner === c.owner && m.room === c.room),
+    events,
     turns: runs.map((r) => ({
       id: r.id,
       status: r.status,
+      model: r.model,
+      reviewer: r.reviewer,
       stopReason: r.stopReason,
-      error: r.error
+      error: r.error,
+      iterations: r.iterations,
+      steps: r.steps,
+      tasks: r.tasks
     })),
     pending: runs.some((r) => r.status === 'queued' || r.status === 'running'),
     usage: {
@@ -61,9 +75,29 @@ function deliver(c: PhoneConversation, runId: string) {
     if (run && (run.status === 'queued' || run.status === 'running')) return
     clearInterval(timer)
     const text = run?.status === 'completed' ? run.result.trim() : ''
-    if (text) message(c.owner, c.room, c.company, c.customer, text.slice(0, 4000))
-    else
-      event(c.owner, 'phone.failed', `Sin respuesta en la conversación con ${c.customer}.`, runId)
+    if (text) {
+      const score = run?.iterations.length
+        ? Math.max(...run.iterations.map((i) => i.score))
+        : undefined
+      message(
+        c.owner,
+        c.room,
+        c.coordination === 'autonomous' ? 'revisor' : 'supervisor-rsi',
+        c.coordination === 'autonomous' ? 'tablero' : 'orquestador',
+        `Respuesta validada${score !== undefined ? ` (${score}/100)` : ''} lista para enviar a ${c.customer}.`
+      )
+      message(c.owner, c.room, c.company, c.customer, text.slice(0, 4000))
+      event(
+        c.owner,
+        'phone.delivered',
+        `Respuesta entregada a ${c.customer} tras ciclo de verificación.`,
+        runId,
+        { room: c.room }
+      )
+    } else
+      event(c.owner, 'phone.failed', `Sin respuesta en la conversación con ${c.customer}.`, runId, {
+        room: c.room
+      })
   }, 600)
 }
 
@@ -91,7 +125,10 @@ export function registerPhone(app: Express) {
           company: z.string().trim().min(1).max(80),
           customer: z.string().trim().min(1).max(80),
           scenario: z.string().trim().max(600).default(''),
-          model: z.string().max(100).default('auto')
+          model: z.string().max(100).default('auto'),
+          coordination: z.enum(['orchestrated', 'autonomous']).default('orchestrated'),
+          reviewer: z.string().max(100).default('auto'),
+          maxIterations: z.number().int().min(1).max(6).default(2)
         })
         .parse(req.body)
       const id = randomUUID()
@@ -106,7 +143,13 @@ export function registerPhone(app: Express) {
       }
       conversations().push(c)
       save()
-      event(c.owner, 'phone.started', `Conversación con ${c.customer} iniciada.`)
+      event(
+        c.owner,
+        'phone.started',
+        `Conversación con ${c.customer} iniciada (${c.lessons} lecciones activas en contexto).`,
+        undefined,
+        { room: c.room }
+      )
       res.status(201).json(view(c))
     })
   )
@@ -123,11 +166,21 @@ export function registerPhone(app: Express) {
         .parse(req.body)
       if (view(c).pending) throw new Error('Espera la respuesta anterior antes de enviar otra.')
       message(c.owner, c.room, c.customer, c.company, input.text)
+      const context = retrieveContext(c.owner, `${c.scenario}\n${input.text}`)
+      message(
+        c.owner,
+        c.room,
+        c.coordination === 'autonomous' ? 'tablero' : 'orquestador',
+        'equipo-rsi',
+        `Solicitud de ${c.customer}: "${input.text.slice(0, 140)}". Contexto recuperado: ${context.hits.length} páginas (${context.estimatedTokens} tokens) · ${c.lessons} lecciones previas.`
+      )
       const run = createRun(c.owner, {
         prompt: `${persona(c)}\n\nMensaje del cliente: ${input.text}`,
         title: `Chat · ${c.customer}`.slice(0, 150),
         model: c.model,
-        maxIterations: 1,
+        coordination: c.coordination,
+        reviewer: c.reviewer || 'auto',
+        maxIterations: c.maxIterations ?? 2,
         budget: input.budget,
         session: c.room
       })
@@ -151,8 +204,10 @@ export function registerPhone(app: Express) {
         .parse(req.body)
       if (view(c).pending) throw new Error('Espera a que termine la respuesta en curso.')
       c.rating = { ...input, ratedAt: new Date().toISOString() }
-      if (input.note) {
-        const first = data.messages.find((m) => m.owner === c.owner && m.room === c.room)
+      if (input.note && process.env.AERIS_RSI_ENABLED !== 'false') {
+        const first = data.messages.find(
+          (m) => m.owner === c.owner && m.room === c.room && m.from === c.customer
+        )
         const page = savePage(c.owner, {
           id: c.lessonPageId,
           title: `${lessonPrefix} · ${c.company} · ${c.id.slice(0, 8)}`,
@@ -165,9 +220,22 @@ export function registerPhone(app: Express) {
           ].join('\n')
         })
         c.lessonPageId = page.id
+        message(
+          c.owner,
+          c.room,
+          'supervisor-rsi',
+          'cerebro-contexto',
+          `Lección consolidada (${page.title}): ${input.note.slice(0, 200)}`
+        )
       }
       save()
-      event(c.owner, 'phone.rated', `Conversación con ${c.customer} calificada.`)
+      event(
+        c.owner,
+        'phone.rated',
+        `Ciclo RSI: conversación con ${c.customer} calificada (${input.resolved ? 'resuelta' : 'no resuelta'}${input.note ? ' · lección añadida al contexto' : ''}).`,
+        undefined,
+        { room: c.room }
+      )
       res.json(view(c))
     })
   )

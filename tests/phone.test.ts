@@ -23,7 +23,7 @@ for (const key of [
   delete process.env[key]
 const { startServer } = await import('../server/index')
 const { cliToken, data } = await import('../server/store')
-const { groupByLessons } = await import('../shared/phone')
+const { groupByLessons, buildRsiTrace } = await import('../shared/phone')
 const { server, port } = await startServer(0, '127.0.0.1')
 const base = `http://127.0.0.1:${port}/api`
 const headers = { Authorization: `Bearer ${cliToken}`, 'Content-Type': 'application/json' }
@@ -45,6 +45,22 @@ async function call(path: string, body?: unknown, auth = true) {
 
 test('phone conversations require authentication', async () => {
   assert.equal((await call('/phone/conversations', undefined, false)).response.status, 401)
+})
+
+test('phone keeps the selected coordination mode on its missions', async () => {
+  const created = await call('/phone/conversations', {
+    company: 'Tienda',
+    customer: 'Ana',
+    coordination: 'autonomous'
+  })
+  assert.equal(created.response.status, 201)
+  assert.equal(created.value.coordination, 'autonomous')
+  const sent = await call(`/phone/conversations/${created.value.id}/messages`, {
+    text: 'Consulta de prueba'
+  })
+  assert.equal(sent.response.status, 202)
+  assert.equal(data.runs.find((r) => r.id === sent.value.runIds[0])?.coordination, 'autonomous')
+  await delay(700)
 })
 
 test('a conversation records the customer message and reports a failed turn without inventing a reply', async () => {
@@ -122,5 +138,95 @@ test('measurements group rated conversations by lessons available at the start',
       [0, 2, 1, 400, '4000'],
       [2, 1, 1, 100, '500']
     ]
+  )
+})
+
+test('CLI RSI trace maps agent dialogue and all seven stages while excluding external customer bubbles', () => {
+  const trace = buildRsiTrace(
+    [
+      {
+        id: 'e1',
+        owner: 'u1',
+        runId: 'r1',
+        type: 'context.retrieved',
+        text: '2 páginas relevantes',
+        createdAt: '2026-11-09T18:00:01.000Z'
+      },
+      {
+        id: 'e2',
+        owner: 'u1',
+        runId: 'r1',
+        type: 'rsi.first_pass',
+        text: 'Primera pasada con Caveman',
+        createdAt: '2026-11-09T18:00:02.000Z'
+      },
+      {
+        id: 'e3',
+        owner: 'u1',
+        runId: 'r1',
+        type: 'routed',
+        text: 'Asignado a modelo medio',
+        createdAt: '2026-11-09T18:00:03.000Z'
+      },
+      {
+        id: 'e4',
+        owner: 'u1',
+        runId: 'r1',
+        type: 'workflow.plan',
+        text: 'Verificar estado del pedido',
+        createdAt: '2026-11-09T18:00:04.000Z'
+      },
+      {
+        id: 'e5',
+        owner: 'u1',
+        runId: 'r1',
+        type: 'iteration',
+        text: 'Iteración 1: 92/100 · candidato aceptado',
+        createdAt: '2026-11-09T18:00:06.000Z'
+      },
+      {
+        id: 'e6',
+        owner: 'u1',
+        type: 'phone.rated',
+        text: 'Lección añadida al contexto',
+        createdAt: '2026-11-09T18:00:08.000Z',
+        data: { room: 'tel-1' }
+      }
+    ],
+    [
+      {
+        id: 'm0',
+        owner: 'u1',
+        room: 'tel-1',
+        from: 'Ana',
+        to: 'Tienda Ejemplo',
+        text: 'Hola',
+        createdAt: '2026-11-09T18:00:00.000Z'
+      },
+      {
+        id: 'm1',
+        owner: 'u1',
+        room: 'tel-1',
+        from: 'orquestador',
+        to: 'equipo-rsi',
+        text: 'Solicitud recibida',
+        createdAt: '2026-11-09T18:00:05.000Z'
+      },
+      {
+        id: 'm2',
+        owner: 'u1',
+        room: 'tel-1',
+        from: 'supervisor-rsi',
+        to: 'cerebro-contexto',
+        text: 'Lección consolidada',
+        createdAt: '2026-11-09T18:00:07.000Z'
+      }
+    ],
+    { room: 'tel-1', runIds: ['r1'], customer: 'Ana', company: 'Tienda Ejemplo' }
+  )
+  assert.ok(!trace.some((l) => l.prefix.includes('Ana')))
+  assert.deepEqual(
+    trace.map((l) => l.stage),
+    ['01', '02', '03', '04', '05', '06', '07', '07']
   )
 })

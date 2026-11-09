@@ -171,6 +171,63 @@
   gap: 16px;
   min-width: 0;
 }
+.phone-cli {
+  height: 420px;
+  min-height: 360px;
+  margin-bottom: 0;
+}
+.phone-cli-output {
+  padding: 16px 18px;
+}
+.rsi-pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--tone-24);
+}
+.rsi-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--tone-18);
+}
+.rsi-stage-pill.done {
+  border-color: var(--tone-100);
+  color: var(--tone-228);
+  background: var(--surface-raised);
+}
+.rsi-stage-pill.active {
+  border-color: var(--accent);
+  color: var(--on-accent);
+  background: var(--accent);
+  font-weight: 600;
+}
+.cli-prefix {
+  color: var(--tone-228);
+  font-weight: 600;
+}
+.terminal-line.agent-msg {
+  color: var(--tone-228);
+}
+.terminal-line.review {
+  color: var(--tone-204);
+}
+.terminal-line.tool {
+  color: var(--tone-176);
+}
+.phone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
 .phone-card {
   display: grid;
   gap: 12px;

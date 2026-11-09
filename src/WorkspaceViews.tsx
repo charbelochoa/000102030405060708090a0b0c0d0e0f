@@ -14,6 +14,7 @@ import {
   Terminal as TerminalIcon
 } from 'lucide-react'
 import { money, providers } from '../shared/catalog'
+import { buildRsiTrace, rsiStages } from '../shared/phone'
 import type { Run } from '../shared/types'
 import { api, formatTokens, shortTime, useWorkspace } from './lib'
 import { Empty, Modal, ProviderMark, SectionTitle, Status } from './components'
@@ -217,7 +218,7 @@ const banner =
   '    _    _____ ____  ___ ____\n   / \\  | ____|  _ \\|_ _/ ___|\n  / _ \\ |  _| | |_) || |\\___ \\\n / ___ \\| |___|  _ < | | ___) |\n/_/   \\_\\_____|_| \\_\\___|____/'
 
 export function TerminalView() {
-  const { snapshot, refresh, notify } = useWorkspace()
+  const { snapshot, refresh } = useWorkspace()
   const [input, setInput] = useState('')
   const [history, setHistory] = useState<{ type: string; text: string }[]>([])
   const [room, setRoom] = useState('general')
@@ -225,11 +226,17 @@ export function TerminalView() {
   const [busy, setBusy] = useState(false)
   const [selected, setSelected] = useState<Run | null>(null)
   const bottom = useRef<HTMLDivElement>(null)
-  const run = snapshot?.runs.find((r) => r.id === selected?.id)
-  const events = snapshot?.events.filter((e) => e.runId === run?.id) || []
+  const run = snapshot?.runs.find((r) => r.id === selected?.id) || snapshot?.runs[0]
+  const trace = buildRsiTrace(
+    snapshot?.events || [],
+    snapshot?.messages || [],
+    selected ? { runIds: [selected.id], room: selected.session } : undefined
+  )
+  const reachedStages = new Set(trace.map((t) => t.stage))
+  const activeStage = trace.at(-1)?.stage
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'instant', block: 'nearest' })
-  }, [history.length, events.length])
+  }, [history.length, trace.length])
   async function submit(e: FormEvent) {
     e.preventDefault()
     const text = input.trim()
@@ -241,12 +248,29 @@ export function TerminalView() {
       if (text === '/clear') {
         setHistory([])
         setSelected(null)
+      } else if (text === '/watch') {
+        setSelected(null)
+        setHistory((h) => [
+          ...h,
+          {
+            type: 'system',
+            text: 'Observando en tiempo real todos los agentes, salas (incluido teléfono) y etapas del ciclo RSI.'
+          }
+        ])
+      } else if (text === '/rsi') {
+        setHistory((h) => [
+          ...h,
+          {
+            type: 'system',
+            text: rsiStages.map((s) => `[${s.id}] ${s.title} (${s.code})`).join('\n')
+          }
+        ])
       } else if (text === '/help')
         setHistory((h) => [
           ...h,
           {
             type: 'system',
-            text: '/help · /clear · /model ID · /room NOMBRE\n/files [ruta] · /open archivo · /config · /worktree nombre\n/message DESTINO texto · /stop\nEscribe un objetivo para iniciar una misión.'
+            text: '/help · /clear · /watch · /rsi · /model ID · /room NOMBRE\n/files [ruta] · /open archivo · /config · /worktree nombre\n/message DESTINO texto · /stop\nEscribe un objetivo para iniciar una misión.'
           }
         ])
       else if (text.startsWith('/model ')) setModel(text.slice(7).trim())
@@ -295,17 +319,39 @@ export function TerminalView() {
         <div className="terminal-top">
           <span>
             <TerminalIcon size={14} />
-            aeris / {room}
+            aeris / {selected ? `misión ${selected.id.slice(0, 8)}` : `watch (${room})`}
           </span>
           <div>
             <span className="mono">{model}</span>
           </div>
         </div>
+        <div className="rsi-pipeline" aria-label="Ciclo RSI en ejecución">
+          {rsiStages.map((s) => {
+            const done = reachedStages.has(s.id)
+            const active = run?.status === 'running' && activeStage === s.id
+            return (
+              <div
+                key={s.id}
+                className={`rsi-stage-pill ${done ? 'done' : ''} ${active ? 'active' : ''}`}
+                title={s.title}
+              >
+                <span className="mono">{s.id}</span>
+                <span>{s.short}</span>
+              </div>
+            )
+          })}
+        </div>
         <div className="terminal-output">
           <pre className="ascii-banner">{banner}</pre>
-          <p className="terminal-tagline">AERIS 1.0</p>
+          <p className="terminal-tagline">
+            AERIS 1.1 · Traza de agentes y ciclo RSI
+            <span>
+              {selected ? `filtrando misión ${selected.id.slice(0, 8)}` : 'modo /watch global'}
+            </span>
+          </p>
           <p className="terminal-help">
-            Escribe un objetivo para empezar. /help para ver los comandos.
+            Escribe un objetivo para empezar o observa aquí el diálogo entre agentes. /help para
+            comandos.
           </p>
           {history.map((line, i) => (
             <div className={`terminal-line ${line.type}`} key={i}>
@@ -313,20 +359,24 @@ export function TerminalView() {
               <pre>{line.text}</pre>
             </div>
           ))}
-          {events.map((item) => (
-            <div
-              key={item.id}
-              className={`terminal-line ${item.type === 'error' ? 'error' : 'event'}`}
-            >
+          {trace.map((line) => (
+            <div key={line.id} className={`terminal-line ${line.kind}`}>
               <span>
-                {['thinking', 'reviewing'].includes(item.type) && run?.status === 'running' ? (
-                  <Loader2 size={12} className="spin" />
-                ) : (
-                  '·'
-                )}
+                {line.kind === 'agent-msg'
+                  ? '->'
+                  : line.kind === 'review'
+                    ? '*'
+                    : line.kind === 'tool'
+                      ? '$'
+                      : line.kind === 'error'
+                        ? '!'
+                        : '·'}
               </span>
-              <pre>{item.text}</pre>
-              <time>{shortTime(item.createdAt)}</time>
+              <pre>
+                <strong className="cli-prefix">{line.prefix}</strong> {line.text}
+                {line.detail ? `\n  |_ ${line.detail}` : ''}
+              </pre>
+              <time>{shortTime(line.createdAt)}</time>
             </div>
           ))}
           {run?.result && !['running', 'queued'].includes(run.status) && (
@@ -368,9 +418,10 @@ export function TerminalView() {
       </section>
       <div className="terminal-hint">
         <span>En tu terminal del sistema</span>
-        <code>npm run cli -- chat --name atlas --room equipo</code>
+        <code>npm run cli -- watch</code>
         <span>
-          Abre otra terminal con <code>--name nova --room equipo</code> para compartir mensajes.
+          O inicia una sesión interactiva con{' '}
+          <code>npm run cli -- chat --name atlas --room equipo</code>
         </span>
       </div>
     </>
