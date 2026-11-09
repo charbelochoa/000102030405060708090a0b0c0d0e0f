@@ -941,6 +941,26 @@ function extractNumbers(text: string): number[] {
 }
 
 export function detectKavakScenario(text: string): KavakScenario | undefined {
+  const firstLine = normalizeText(text.split('\n')[0] || '')
+  for (const sc of kavakScenarios) {
+    if (
+      firstLine.includes(normalizeText(sc.orderId)) ||
+      firstLine.includes(normalizeText(sc.stockId)) ||
+      firstLine.includes(normalizeText(sc.id))
+    ) {
+      return sc
+    }
+  }
+  const customerTail = normalizeText(text.split(/mensaje del cliente:/i).at(-1) || text)
+  for (const sc of kavakScenarios) {
+    if (
+      customerTail.includes(normalizeText(sc.orderId)) ||
+      customerTail.includes(normalizeText(sc.stockId)) ||
+      customerTail.includes(normalizeText(sc.id))
+    ) {
+      return sc
+    }
+  }
   const norm = normalizeText(text)
   for (const sc of kavakScenarios) {
     if (
