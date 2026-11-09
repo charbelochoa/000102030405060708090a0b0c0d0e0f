@@ -104,7 +104,7 @@ function buildStatisticalResponseFromDbSubset(
   const facts = scenario.expectedFacts.slice(0, factCount)
   const targets = scenario.numericTargets
     .slice(0, targetCount)
-    .map((t) => `${t.label}: ${t.expected.toLocaleString('en-US')} ${t.unit}`.trim())
+    .map((t) => `${t.label}: ${t.exactValue.toLocaleString('en-US')} ${t.unit}`.trim())
   return [
     `Expediente ${scenario.orderId} · Unidad ${scenario.stockId} (${scenario.customer}):`,
     facts.join(' · '),
